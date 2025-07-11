@@ -688,17 +688,16 @@ export class NuclearThroneUI {
     // Training Controls Title
     const controlsLabel = blessed.text({
       parent: this.rightPanel,
-      top: 19,
+      top: 20,
       left: 2,
-      content: '{bold}Training Controls:{/}',
-      tags: true,
+      content: 'Training Controls:',
     });
     this.formElements.push(controlsLabel);
 
     // Start Training Button
     const startButton = blessed.button({
       parent: this.rightPanel,
-      top: 20,
+      top: 21,
       left: 2,
       width: 15,
       height: 3,
@@ -724,7 +723,7 @@ export class NuclearThroneUI {
     // Stop Training Button
     const stopButton = blessed.button({
       parent: this.rightPanel,
-      top: 20,
+      top: 21,
       left: 19,
       width: 15,
       height: 3,
@@ -750,16 +749,15 @@ export class NuclearThroneUI {
     // Training Status Area
     const statusLabel = blessed.text({
       parent: this.rightPanel,
-      top: 25,
+      top: 26,
       left: 2,
-      content: '{bold}Training Status:{/}',
-      tags: true,
+      content: 'Training Status:',
     });
     this.formElements.push(statusLabel);
 
     const statusBox = blessed.box({
       parent: this.rightPanel,
-      top: 26,
+      top: 27,
       left: 2,
       width: '90%',
       height: '40%',

@@ -167,6 +167,9 @@ export class NuclearThroneUI {
     this.formElements.forEach(el => el.destroy());
     this.formElements = [];
 
+    // Reset selection only when changing modes
+    this.currentSelection = 0;
+
     // Create new right panel
     this.rightPanel = blessed.box({
       parent: this.modeBox,
@@ -198,8 +201,7 @@ export class NuclearThroneUI {
   private createDataCollectionForm(): void {
     if (!this.rightPanel) return;
 
-    // Reset selection state
-    this.currentSelection = 0;
+    // Reset editing state but preserve selection if we're updating the form
     this.isEditingField = false;
 
     // Title
@@ -536,9 +538,14 @@ export class NuclearThroneUI {
   }
 
   public updateState(state: ApplicationState): void {
+    const modeChanged = this.state.currentMode !== state.currentMode;
     this.state = state;
     this.updateStatus();
-    this.handleModeChange();
+    
+    // Only handle mode change if the mode actually changed
+    if (modeChanged) {
+      this.handleModeChange();
+    }
   }
 
   public start(): void {

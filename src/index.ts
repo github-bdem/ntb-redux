@@ -18,9 +18,10 @@ export interface TrainingConfig {
 }
 
 export interface AgentConfig {
-  inferenceDelay: number; // placeholder
-  confidenceThreshold: number; // placeholder
-  actionTimeout: number; // placeholder
+  targetWindow: string;
+  modelPath: string;
+  verboseMode: boolean;
+  agentActive: boolean;
 }
 
 export interface WelcomeConfig {
@@ -57,9 +58,10 @@ class ApplicationStateManager {
         isTrainingHappening: false,
       },
       agent: {
-        inferenceDelay: 50,
-        confidenceThreshold: 0.8,
-        actionTimeout: 1000,
+        targetWindow: 'Nuclear Throne',
+        modelPath: './models/ntb-model.pt',
+        verboseMode: false,
+        agentActive: false,
       },
     };
 

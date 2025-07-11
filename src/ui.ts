@@ -195,6 +195,8 @@ export class NuclearThroneUI {
       this.createDataCollectionForm();
     } else if (this.state.currentMode === 'training') {
       this.createTrainingForm();
+    } else if (this.state.currentMode === 'agent') {
+      this.createAgentForm();
     }
 
     this.render();
@@ -856,6 +858,345 @@ export class NuclearThroneUI {
       } else if (key.name === 'space' && this.currentSelection === 1) {
         // Space only works for checkbox
         batchCheckbox.toggle();
+      }
+    };
+
+    this.screen.on('keypress', arrowHandler);
+    this.screen.on('keypress', activateHandler);
+    
+    // Store handlers for cleanup
+    this.tabHandler = () => {
+      this.screen.off('keypress', arrowHandler);
+      this.screen.off('keypress', activateHandler);
+    };
+
+    // Initial style update
+    this.updateFieldStyles();
+  }
+
+  private createAgentForm(): void {
+    if (!this.rightPanel) return;
+
+    // Reset editing state but preserve selection if we're updating the form
+    this.isEditingField = false;
+
+    // Title
+    const title = blessed.text({
+      parent: this.rightPanel,
+      top: 1,
+      left: 2,
+      content: '{bold}{cyan-fg}Agent Configuration{/}',
+      tags: true,
+    });
+    this.formElements.push(title);
+
+    // Target Window
+    const windowLabel = blessed.text({
+      parent: this.rightPanel,
+      top: 3,
+      left: 2,
+      content: 'Target Window:',
+    });
+    this.formElements.push(windowLabel);
+
+    const windowInputWrapper = blessed.box({
+      parent: this.rightPanel,
+      top: 4,
+      left: 2,
+      width: '90%',
+      height: 3,
+      border: { type: 'line' },
+      style: { border: { fg: this.currentSelection === 0 ? 'white' : 'gray' } },
+    });
+    this.formElements.push(windowInputWrapper);
+
+    const windowInput = blessed.textbox({
+      parent: windowInputWrapper,
+      top: 0,
+      left: 0,
+      width: '100%-2',
+      height: 1,
+      inputOnFocus: true,
+      style: { fg: 'white' },
+      value: this.state.agent.targetWindow,
+    });
+    windowInput.on('submit', (value) => {
+      this.onStateUpdate({
+        agent: { ...this.state.agent, targetWindow: value },
+      });
+      this.isEditingField = false;
+      if (this.updateFieldStyles) this.updateFieldStyles();
+      this.screen.render();
+    });
+    windowInput.on('cancel', () => {
+      this.isEditingField = false;
+      if (this.updateFieldStyles) this.updateFieldStyles();
+      this.screen.render();
+    });
+    this.formElements.push(windowInput);
+
+    // Model Path
+    const modelLabel = blessed.text({
+      parent: this.rightPanel,
+      top: 8,
+      left: 2,
+      content: 'Model Path:',
+    });
+    this.formElements.push(modelLabel);
+
+    const modelInputWrapper = blessed.box({
+      parent: this.rightPanel,
+      top: 9,
+      left: 2,
+      width: '90%',
+      height: 3,
+      border: { type: 'line' },
+      style: { border: { fg: this.currentSelection === 1 ? 'white' : 'gray' } },
+    });
+    this.formElements.push(modelInputWrapper);
+
+    const modelInput = blessed.textbox({
+      parent: modelInputWrapper,
+      top: 0,
+      left: 0,
+      width: '100%-2',
+      height: 1,
+      inputOnFocus: true,
+      style: { fg: 'white' },
+      value: this.state.agent.modelPath,
+    });
+    modelInput.on('submit', (value) => {
+      this.onStateUpdate({
+        agent: { ...this.state.agent, modelPath: value },
+      });
+      this.isEditingField = false;
+      if (this.updateFieldStyles) this.updateFieldStyles();
+      this.screen.render();
+    });
+    modelInput.on('cancel', () => {
+      this.isEditingField = false;
+      if (this.updateFieldStyles) this.updateFieldStyles();
+      this.screen.render();
+    });
+    this.formElements.push(modelInput);
+
+    // Verbose Mode Checkbox
+    const verboseLabel = blessed.text({
+      parent: this.rightPanel,
+      top: 13,
+      left: 2,
+      content: 'Verbose Mode:',
+    });
+    this.formElements.push(verboseLabel);
+
+    const verboseCheckboxWrapper = blessed.box({
+      parent: this.rightPanel,
+      top: 13,
+      left: 17,
+      width: 20,
+      height: 1,
+      content: '',
+      style: { fg: this.currentSelection === 2 ? 'white' : 'gray' },
+    });
+    this.formElements.push(verboseCheckboxWrapper);
+
+    const verboseCheckbox = blessed.checkbox({
+      parent: verboseCheckboxWrapper,
+      top: 0,
+      left: 0,
+      checked: this.state.agent.verboseMode,
+      text: this.state.agent.verboseMode ? 'Enabled ' : 'Disabled',
+      style: { 
+        fg: this.currentSelection === 2 ? 'white' : 'gray',
+      }
+    });
+    verboseCheckbox.on('check', () => {
+      verboseCheckbox.text = 'Enabled ';
+      this.onStateUpdate({
+        agent: { ...this.state.agent, verboseMode: true },
+      });
+      this.screen.render();
+    });
+    verboseCheckbox.on('uncheck', () => {
+      verboseCheckbox.text = 'Disabled';
+      this.onStateUpdate({
+        agent: { ...this.state.agent, verboseMode: false },
+      });
+      this.screen.render();
+    });
+    this.formElements.push(verboseCheckbox);
+
+    // Agent Controls Title
+    const controlsLabel = blessed.text({
+      parent: this.rightPanel,
+      top: 16,
+      left: 2,
+      content: 'Agent Controls:',
+    });
+    this.formElements.push(controlsLabel);
+
+    // Start Agent Button
+    const startButton = blessed.button({
+      parent: this.rightPanel,
+      top: 17,
+      left: 2,
+      width: 13,
+      height: 3,
+      content: '{green-fg}Start Agent{/}',
+      tags: true,
+      border: { type: 'line' },
+      style: {
+        border: { fg: this.currentSelection === 3 ? 'white' : 'gray' },
+        focus: { border: { fg: 'cyan' } },
+      },
+    });
+    startButton.on('press', () => {
+      if (!this.state.agent.agentActive) {
+        this.onStateUpdate({
+          agent: { ...this.state.agent, agentActive: true },
+        });
+        statusBox.setContent('{yellow-fg}Agent running...{/}');
+        this.screen.render();
+      }
+    });
+    this.formElements.push(startButton);
+
+    // Stop Agent Button
+    const stopButton = blessed.button({
+      parent: this.rightPanel,
+      top: 17,
+      left: 17,
+      width: 13,
+      height: 3,
+      content: '{red-fg}Stop Agent{/}',
+      tags: true,
+      border: { type: 'line' },
+      style: {
+        border: { fg: this.currentSelection === 4 ? 'white' : 'gray' },
+        focus: { border: { fg: 'cyan' } },
+      },
+    });
+    stopButton.on('press', () => {
+      if (this.state.agent.agentActive) {
+        this.onStateUpdate({
+          agent: { ...this.state.agent, agentActive: false },
+        });
+        statusBox.setContent('{gray-fg}Agent stopped{/}');
+        this.screen.render();
+      }
+    });
+    this.formElements.push(stopButton);
+
+    // Agent Status Area
+    const statusLabel = blessed.text({
+      parent: this.rightPanel,
+      top: 22,
+      left: 2,
+      content: 'Agent Status:',
+    });
+    this.formElements.push(statusLabel);
+
+    const statusBox = blessed.box({
+      parent: this.rightPanel,
+      top: 23,
+      left: 2,
+      width: '90%',
+      height: '40%',
+      border: { type: 'line' },
+      style: { border: { fg: 'gray' } },
+      scrollable: true,
+      alwaysScroll: true,
+      mouse: true,
+      content: this.state.agent.agentActive ? 
+        '{yellow-fg}Agent running...{/}' : 
+        '{gray-fg}Agent not started{/}',
+      tags: true,
+    });
+    this.formElements.push(statusBox);
+
+    // Instructions
+    const instructions = blessed.text({
+      parent: this.rightPanel,
+      bottom: 1,
+      left: 2,
+      content: '{gray-fg}Arrow keys to select • Enter to edit/activate • Space for checkbox • ESC for mode menu{/}',
+      tags: true,
+    });
+    this.formElements.push(instructions);
+
+    // Store references for navigation and activation
+    const fieldWrappers = [windowInputWrapper, modelInputWrapper, verboseCheckboxWrapper, startButton, stopButton];
+    const focusableElements = [windowInput, modelInput, verboseCheckbox, startButton, stopButton];
+    
+    // Initial highlighting
+    this.updateFieldStyles = () => {
+      fieldWrappers.forEach((wrapper, index) => {
+        if (wrapper && wrapper.style) {
+          if (index === 2) {
+            // Checkbox wrapper
+            wrapper.style.fg = (index === this.currentSelection) ? 'white' : 'gray';
+          } else if (index === 3 || index === 4) {
+            // Buttons
+            wrapper.style.border = wrapper.style.border || {};
+            wrapper.style.border.fg = (index === this.currentSelection) ? 'white' : 'gray';
+          } else {
+            // Text field wrappers
+            wrapper.style.border = wrapper.style.border || {};
+            wrapper.style.border.fg = (index === this.currentSelection && !this.isEditingField) ? 'white' : 'gray';
+            if (index === this.currentSelection && this.isEditingField) {
+              wrapper.style.border.fg = 'cyan';
+            }
+          }
+        }
+      });
+      
+      // Update checkbox text color
+      if (verboseCheckbox && verboseCheckbox.style) {
+        verboseCheckbox.style.fg = (this.currentSelection === 2) ? 'white' : 'gray';
+      }
+      
+      this.screen.render();
+    };
+
+    // Arrow key navigation within form
+    const arrowHandler = (_ch: any, key: any) => {
+      if (!this.isPanelFocused || this.isEditingField) return;
+      
+      if (key.name === 'up' && this.currentSelection > 0) {
+        this.currentSelection--;
+        if (this.updateFieldStyles) this.updateFieldStyles();
+      } else if (key.name === 'down' && this.currentSelection < focusableElements.length - 1) {
+        this.currentSelection++;
+        if (this.updateFieldStyles) this.updateFieldStyles();
+      }
+    };
+
+    // Enter key to activate field, Space only for checkbox
+    const activateHandler = (_ch: any, key: any) => {
+      if (!this.isPanelFocused || this.isEditingField) return;
+      
+      if (key.name === 'enter') {
+        const element = focusableElements[this.currentSelection];
+        if (element && element.parent) {
+          if (this.currentSelection === 3) {
+            // Handle start button
+            startButton.press();
+          } else if (this.currentSelection === 4) {
+            // Handle stop button
+            stopButton.press();
+          } else if (this.currentSelection === 2) {
+            // Handle checkbox
+            verboseCheckbox.toggle();
+          } else {
+            // Handle text fields
+            this.isEditingField = true;
+            if (this.updateFieldStyles) this.updateFieldStyles();
+            element.focus();
+          }
+        }
+      } else if (key.name === 'space' && this.currentSelection === 2) {
+        // Space only works for checkbox
+        verboseCheckbox.toggle();
       }
     };
 

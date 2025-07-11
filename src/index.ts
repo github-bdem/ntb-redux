@@ -3,9 +3,10 @@ import { NuclearThroneUI } from './ui.js';
 export type Mode = 'welcome' | 'data-collection' | 'training' | 'agent';
 
 export interface DataCollectionConfig {
-  captureInterval: number; // placeholder
-  saveDirectory: string; // placeholder
-  maxSamples: number; // placeholder
+  targetWindowName: string;
+  trainingDataSaveDirectory: string;
+  trainingDataSetName: string;
+  isDataCollectionEnabled: boolean;
 }
 
 export interface TrainingConfig {
@@ -42,9 +43,10 @@ class ApplicationStateManager {
       currentMode: 'welcome',
       welcome: {},
       dataCollection: {
-        captureInterval: 100,
-        saveDirectory: './data',
-        maxSamples: 10000,
+        targetWindowName: 'Nuclear Throne',
+        trainingDataSaveDirectory: './training-data',
+        trainingDataSetName: 'dataset-1',
+        isDataCollectionEnabled: false,
       },
       training: {
         batchSize: 32,
@@ -59,11 +61,20 @@ class ApplicationStateManager {
       },
     };
 
-    this.ui = new NuclearThroneUI(this.state, (mode) => this.handleModeChange(mode));
+    this.ui = new NuclearThroneUI(
+      this.state, 
+      (mode) => this.handleModeChange(mode),
+      (updates) => this.handleStateUpdate(updates)
+    );
   }
 
   private handleModeChange(mode: Mode): void {
     this.state.currentMode = mode;
+    this.ui.updateState(this.state);
+  }
+
+  private handleStateUpdate(updates: Partial<ApplicationState>): void {
+    this.state = { ...this.state, ...updates };
     this.ui.updateState(this.state);
   }
 

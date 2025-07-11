@@ -398,7 +398,7 @@ export class NuclearThroneUI {
       parent: this.rightPanel,
       bottom: 1,
       left: 2,
-      content: '{dim-fg}Arrow keys to select • Enter to edit • Space to toggle checkbox • ESC for mode menu{/}',
+      content: '{gray-fg}Arrow keys to select • Enter to edit • Space to toggle checkbox • ESC for mode menu{/}',
       tags: true,
     });
     this.formElements.push(instructions);
@@ -502,7 +502,7 @@ export class NuclearThroneUI {
         '• Select {yellow-fg}Data Collection Mode{/} to record gameplay\n' +
         '• Use {yellow-fg}Training Mode{/} to train the AI model\n' +
         '• Run {yellow-fg}Agent Mode{/} to watch the bot play\n\n' +
-        '{dim-fg}Navigate with arrow keys • Press Enter to select{/}';
+        '{gray-fg}Navigate with arrow keys • Press Enter to select{/}';
 
       return logo + welcome;
     }

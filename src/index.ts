@@ -30,7 +30,7 @@ class NuclearThroneUI {
       top: 0,
       left: 0,
       width: '100%',
-      height: '100%-3',
+      height: '100%-4',
       border: {
         type: 'line'
       },
@@ -38,7 +38,8 @@ class NuclearThroneUI {
         border: {
           fg: 'cyan'
         }
-      }
+      },
+      label: ' NTB-Redux '
     });
 
     this.menuBox = blessed.list({
@@ -46,7 +47,7 @@ class NuclearThroneUI {
       top: 1,
       left: 1,
       width: '30%',
-      height: '100%-2',
+      height: this.modes.length + 2, // Height based on number of items + borders
       border: {
         type: 'line'
       },
@@ -71,7 +72,7 @@ class NuclearThroneUI {
       bottom: 0,
       left: 0,
       width: '100%',
-      height: 3,
+      height: 4,
       border: {
         type: 'line'
       },
@@ -132,7 +133,9 @@ class NuclearThroneUI {
 
 
   private getStatusText(): string {
-    return ` Current Mode: ${this.modes.find(m => m.value === this.currentMode)?.label} | Press 'q' or 'ESC' to quit | Use arrow keys to navigate `;
+    const currentModeLabel = this.modes.find(m => m.value === this.currentMode)?.label || '';
+    return ` Current Mode: ${currentModeLabel}\n` +
+           ` Press 'q' or 'ESC' to quit | Use arrow keys to navigate`;
   }
 
   private updateStatus(): void {

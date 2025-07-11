@@ -3,13 +3,59 @@ import { Widgets } from 'blessed';
 
 type Mode = 'data-collection' | 'training' | 'live';
 
+interface DataCollectionConfig {
+  captureInterval: number; // placeholder
+  saveDirectory: string; // placeholder
+  maxSamples: number; // placeholder
+}
+
+interface TrainingConfig {
+  batchSize: number; // placeholder
+  learningRate: number; // placeholder
+  epochs: number; // placeholder
+  modelPath: string; // placeholder
+}
+
+interface LiveConfig {
+  inferenceDelay: number; // placeholder
+  confidenceThreshold: number; // placeholder
+  actionTimeout: number; // placeholder
+}
+
+interface ApplicationState {
+  currentMode: Mode;
+  dataCollection: DataCollectionConfig;
+  training: TrainingConfig;
+  live: LiveConfig;
+}
+
+const initialState: ApplicationState = {
+  currentMode: 'data-collection',
+  dataCollection: {
+    captureInterval: 100,
+    saveDirectory: './data',
+    maxSamples: 10000
+  },
+  training: {
+    batchSize: 32,
+    learningRate: 0.001,
+    epochs: 100,
+    modelPath: './models'
+  },
+  live: {
+    inferenceDelay: 50,
+    confidenceThreshold: 0.8,
+    actionTimeout: 1000
+  }
+};
+
 class NuclearThroneUI {
   private screen: Widgets.Screen;
   private modeBox: Widgets.BoxElement;
   private menuBox: Widgets.ListElement;
   private statusBox: Widgets.BoxElement;
   private rightPanel: Widgets.BoxElement | null = null;
-  private currentMode: Mode = 'data-collection';
+  private state: ApplicationState;
   private modes: { value: Mode; label: string }[] = [
     { value: 'data-collection', label: 'Data Collection Mode' },
     { value: 'training', label: 'Training Mode' },
@@ -17,6 +63,8 @@ class NuclearThroneUI {
   ];
 
   constructor() {
+    this.state = { ...initialState };
+    
     this.screen = blessed.screen({
       smartCSR: true,
       title: 'Nuclear Throne Bot - Redux'
@@ -95,7 +143,7 @@ class NuclearThroneUI {
     this.menuBox.on('select', (_item: any, index: number) => {
       const mode = this.modes[index];
       if (mode) {
-        this.currentMode = mode.value;
+        this.state.currentMode = mode.value;
         this.updateStatus();
         this.handleModeChange();
       }
@@ -125,7 +173,7 @@ class NuclearThroneUI {
           fg: 'white'
         }
       },
-      label: ` ${this.modes.find(m => m.value === this.currentMode)?.label || ''} `
+      label: ` ${this.modes.find(m => m.value === this.state.currentMode)?.label || ''} `
     });
 
     this.render();
@@ -133,7 +181,7 @@ class NuclearThroneUI {
 
 
   private getStatusText(): string {
-    const currentModeLabel = this.modes.find(m => m.value === this.currentMode)?.label || '';
+    const currentModeLabel = this.modes.find(m => m.value === this.state.currentMode)?.label || '';
     return ` Current Mode: ${currentModeLabel}\n` +
            ` Press 'q' or 'ESC' to quit | Use arrow keys to navigate`;
   }

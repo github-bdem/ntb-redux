@@ -10,10 +10,11 @@ export interface DataCollectionConfig {
 }
 
 export interface TrainingConfig {
-  batchSize: number; // placeholder
-  learningRate: number; // placeholder
-  epochs: number; // placeholder
-  modelPath: string; // placeholder
+  trainingDataDirectory: string;
+  batchModeEnabled: boolean;
+  targetApplicationName: string;
+  modelPath: string;
+  isTrainingHappening: boolean;
 }
 
 export interface AgentConfig {
@@ -49,10 +50,11 @@ class ApplicationStateManager {
         isDataCollectionEnabled: false,
       },
       training: {
-        batchSize: 32,
-        learningRate: 0.001,
-        epochs: 100,
-        modelPath: './models',
+        trainingDataDirectory: './training-data',
+        batchModeEnabled: false,
+        targetApplicationName: 'Nuclear Throne',
+        modelPath: './models/ntb-model.pt',
+        isTrainingHappening: false,
       },
       agent: {
         inferenceDelay: 50,
@@ -74,7 +76,19 @@ class ApplicationStateManager {
   }
 
   private handleStateUpdate(updates: Partial<ApplicationState>): void {
-    this.state = { ...this.state, ...updates };
+    // Deep merge for nested objects
+    if (updates.dataCollection) {
+      this.state.dataCollection = { ...this.state.dataCollection, ...updates.dataCollection };
+    }
+    if (updates.training) {
+      this.state.training = { ...this.state.training, ...updates.training };
+    }
+    if (updates.agent) {
+      this.state.agent = { ...this.state.agent, ...updates.agent };
+    }
+    if (updates.currentMode !== undefined) {
+      this.state.currentMode = updates.currentMode;
+    }
     this.ui.updateState(this.state);
   }
 

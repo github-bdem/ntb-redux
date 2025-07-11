@@ -193,6 +193,8 @@ export class NuclearThroneUI {
       this.rightPanel.setContent(this.getModeContent());
     } else if (this.state.currentMode === 'data-collection') {
       this.createDataCollectionForm();
+    } else if (this.state.currentMode === 'training') {
+      this.createTrainingForm();
     }
 
     this.render();
@@ -470,6 +472,392 @@ export class NuclearThroneUI {
       } else if (key.name === 'space' && this.currentSelection === 3) {
         // Space only works for checkbox
         enabledCheckbox.toggle();
+      }
+    };
+
+    this.screen.on('keypress', arrowHandler);
+    this.screen.on('keypress', activateHandler);
+    
+    // Store handlers for cleanup
+    this.tabHandler = () => {
+      this.screen.off('keypress', arrowHandler);
+      this.screen.off('keypress', activateHandler);
+    };
+
+    // Initial style update
+    this.updateFieldStyles();
+  }
+
+  private createTrainingForm(): void {
+    if (!this.rightPanel) return;
+
+    // Reset editing state but preserve selection if we're updating the form
+    this.isEditingField = false;
+
+    // Title
+    const title = blessed.text({
+      parent: this.rightPanel,
+      top: 1,
+      left: 2,
+      content: '{bold}{cyan-fg}Training Configuration{/}',
+      tags: true,
+    });
+    this.formElements.push(title);
+
+    // Training Data Directory
+    const dirLabel = blessed.text({
+      parent: this.rightPanel,
+      top: 3,
+      left: 2,
+      content: 'Training Data Directory:',
+    });
+    this.formElements.push(dirLabel);
+
+    const dirInputWrapper = blessed.box({
+      parent: this.rightPanel,
+      top: 4,
+      left: 2,
+      width: '90%',
+      height: 3,
+      border: { type: 'line' },
+      style: { border: { fg: this.currentSelection === 0 ? 'white' : 'gray' } },
+    });
+    this.formElements.push(dirInputWrapper);
+
+    const dirInput = blessed.textbox({
+      parent: dirInputWrapper,
+      top: 0,
+      left: 0,
+      width: '100%-2',
+      height: 1,
+      inputOnFocus: true,
+      style: { fg: 'white' },
+      value: this.state.training.trainingDataDirectory,
+    });
+    dirInput.on('submit', (value) => {
+      this.onStateUpdate({
+        training: { ...this.state.training, trainingDataDirectory: value },
+      });
+      this.isEditingField = false;
+      if (this.updateFieldStyles) this.updateFieldStyles();
+      this.screen.render();
+    });
+    dirInput.on('cancel', () => {
+      this.isEditingField = false;
+      if (this.updateFieldStyles) this.updateFieldStyles();
+      this.screen.render();
+    });
+    this.formElements.push(dirInput);
+
+    // Batch Mode Enabled Checkbox
+    const batchLabel = blessed.text({
+      parent: this.rightPanel,
+      top: 8,
+      left: 2,
+      content: 'Batch Mode Enabled:',
+    });
+    this.formElements.push(batchLabel);
+
+    const batchCheckboxWrapper = blessed.box({
+      parent: this.rightPanel,
+      top: 8,
+      left: 23,
+      width: 20,
+      height: 1,
+      content: '',
+      style: { fg: this.currentSelection === 1 ? 'white' : 'gray' },
+    });
+    this.formElements.push(batchCheckboxWrapper);
+
+    const batchCheckbox = blessed.checkbox({
+      parent: batchCheckboxWrapper,
+      top: 0,
+      left: 0,
+      checked: this.state.training.batchModeEnabled,
+      text: this.state.training.batchModeEnabled ? 'Enabled ' : 'Disabled',
+      style: { 
+        fg: this.currentSelection === 1 ? 'white' : 'gray',
+      }
+    });
+    batchCheckbox.on('check', () => {
+      batchCheckbox.text = 'Enabled ';
+      this.onStateUpdate({
+        training: { ...this.state.training, batchModeEnabled: true },
+      });
+      this.screen.render();
+    });
+    batchCheckbox.on('uncheck', () => {
+      batchCheckbox.text = 'Disabled';
+      this.onStateUpdate({
+        training: { ...this.state.training, batchModeEnabled: false },
+      });
+      this.screen.render();
+    });
+    this.formElements.push(batchCheckbox);
+
+    // Target Application Name
+    const appLabel = blessed.text({
+      parent: this.rightPanel,
+      top: 10,
+      left: 2,
+      content: 'Target Application Name:',
+    });
+    this.formElements.push(appLabel);
+
+    const appInputWrapper = blessed.box({
+      parent: this.rightPanel,
+      top: 11,
+      left: 2,
+      width: '90%',
+      height: 3,
+      border: { type: 'line' },
+      style: { border: { fg: this.currentSelection === 2 ? 'white' : 'gray' } },
+    });
+    this.formElements.push(appInputWrapper);
+
+    const appInput = blessed.textbox({
+      parent: appInputWrapper,
+      top: 0,
+      left: 0,
+      width: '100%-2',
+      height: 1,
+      inputOnFocus: true,
+      style: { fg: 'white' },
+      value: this.state.training.targetApplicationName,
+    });
+    appInput.on('submit', (value) => {
+      this.onStateUpdate({
+        training: { ...this.state.training, targetApplicationName: value },
+      });
+      this.isEditingField = false;
+      if (this.updateFieldStyles) this.updateFieldStyles();
+      this.screen.render();
+    });
+    appInput.on('cancel', () => {
+      this.isEditingField = false;
+      if (this.updateFieldStyles) this.updateFieldStyles();
+      this.screen.render();
+    });
+    this.formElements.push(appInput);
+
+    // Model Path
+    const modelLabel = blessed.text({
+      parent: this.rightPanel,
+      top: 15,
+      left: 2,
+      content: 'Model Path:',
+    });
+    this.formElements.push(modelLabel);
+
+    const modelInputWrapper = blessed.box({
+      parent: this.rightPanel,
+      top: 16,
+      left: 2,
+      width: '90%',
+      height: 3,
+      border: { type: 'line' },
+      style: { border: { fg: this.currentSelection === 3 ? 'white' : 'gray' } },
+    });
+    this.formElements.push(modelInputWrapper);
+
+    const modelInput = blessed.textbox({
+      parent: modelInputWrapper,
+      top: 0,
+      left: 0,
+      width: '100%-2',
+      height: 1,
+      inputOnFocus: true,
+      style: { fg: 'white' },
+      value: this.state.training.modelPath,
+    });
+    modelInput.on('submit', (value) => {
+      this.onStateUpdate({
+        training: { ...this.state.training, modelPath: value },
+      });
+      this.isEditingField = false;
+      if (this.updateFieldStyles) this.updateFieldStyles();
+      this.screen.render();
+    });
+    modelInput.on('cancel', () => {
+      this.isEditingField = false;
+      if (this.updateFieldStyles) this.updateFieldStyles();
+      this.screen.render();
+    });
+    this.formElements.push(modelInput);
+
+    // Training Controls Title
+    const controlsLabel = blessed.text({
+      parent: this.rightPanel,
+      top: 19,
+      left: 2,
+      content: '{bold}Training Controls:{/}',
+      tags: true,
+    });
+    this.formElements.push(controlsLabel);
+
+    // Start Training Button
+    const startButton = blessed.button({
+      parent: this.rightPanel,
+      top: 20,
+      left: 2,
+      width: 15,
+      height: 3,
+      content: '{green-fg}Start Training{/}',
+      tags: true,
+      border: { type: 'line' },
+      style: {
+        border: { fg: this.currentSelection === 4 ? 'white' : 'gray' },
+        focus: { border: { fg: 'cyan' } },
+      },
+    });
+    startButton.on('press', () => {
+      if (!this.state.training.isTrainingHappening) {
+        this.onStateUpdate({
+          training: { ...this.state.training, isTrainingHappening: true },
+        });
+        statusBox.setContent('{yellow-fg}Training in progress...{/}');
+        this.screen.render();
+      }
+    });
+    this.formElements.push(startButton);
+
+    // Stop Training Button
+    const stopButton = blessed.button({
+      parent: this.rightPanel,
+      top: 20,
+      left: 19,
+      width: 15,
+      height: 3,
+      content: '{red-fg}Stop Training{/}',
+      tags: true,
+      border: { type: 'line' },
+      style: {
+        border: { fg: this.currentSelection === 5 ? 'white' : 'gray' },
+        focus: { border: { fg: 'cyan' } },
+      },
+    });
+    stopButton.on('press', () => {
+      if (this.state.training.isTrainingHappening) {
+        this.onStateUpdate({
+          training: { ...this.state.training, isTrainingHappening: false },
+        });
+        statusBox.setContent('{gray-fg}Training stopped{/}');
+        this.screen.render();
+      }
+    });
+    this.formElements.push(stopButton);
+
+    // Training Status Area
+    const statusLabel = blessed.text({
+      parent: this.rightPanel,
+      top: 25,
+      left: 2,
+      content: '{bold}Training Status:{/}',
+      tags: true,
+    });
+    this.formElements.push(statusLabel);
+
+    const statusBox = blessed.box({
+      parent: this.rightPanel,
+      top: 26,
+      left: 2,
+      width: '90%',
+      height: '40%',
+      border: { type: 'line' },
+      style: { border: { fg: 'gray' } },
+      scrollable: true,
+      alwaysScroll: true,
+      mouse: true,
+      content: this.state.training.isTrainingHappening ? 
+        '{yellow-fg}Training in progress...{/}' : 
+        '{gray-fg}Training not started{/}',
+      tags: true,
+    });
+    this.formElements.push(statusBox);
+
+    // Instructions
+    const instructions = blessed.text({
+      parent: this.rightPanel,
+      bottom: 1,
+      left: 2,
+      content: '{gray-fg}Arrow keys to select • Enter to edit/activate • Space for checkbox • ESC for mode menu{/}',
+      tags: true,
+    });
+    this.formElements.push(instructions);
+
+    // Store references for navigation and activation
+    const fieldWrappers = [dirInputWrapper, batchCheckboxWrapper, appInputWrapper, modelInputWrapper, startButton, stopButton];
+    const focusableElements = [dirInput, batchCheckbox, appInput, modelInput, startButton, stopButton];
+    
+    // Initial highlighting
+    this.updateFieldStyles = () => {
+      fieldWrappers.forEach((wrapper, index) => {
+        if (wrapper && wrapper.style) {
+          if (index === 1) {
+            // Checkbox wrapper
+            wrapper.style.fg = (index === this.currentSelection) ? 'white' : 'gray';
+          } else if (index === 4 || index === 5) {
+            // Buttons
+            wrapper.style.border = wrapper.style.border || {};
+            wrapper.style.border.fg = (index === this.currentSelection) ? 'white' : 'gray';
+          } else {
+            // Text field wrappers
+            wrapper.style.border = wrapper.style.border || {};
+            wrapper.style.border.fg = (index === this.currentSelection && !this.isEditingField) ? 'white' : 'gray';
+            if (index === this.currentSelection && this.isEditingField) {
+              wrapper.style.border.fg = 'cyan';
+            }
+          }
+        }
+      });
+      
+      // Update checkbox text color
+      if (batchCheckbox && batchCheckbox.style) {
+        batchCheckbox.style.fg = (this.currentSelection === 1) ? 'white' : 'gray';
+      }
+      
+      this.screen.render();
+    };
+
+    // Arrow key navigation within form
+    const arrowHandler = (_ch: any, key: any) => {
+      if (!this.isPanelFocused || this.isEditingField) return;
+      
+      if (key.name === 'up' && this.currentSelection > 0) {
+        this.currentSelection--;
+        if (this.updateFieldStyles) this.updateFieldStyles();
+      } else if (key.name === 'down' && this.currentSelection < focusableElements.length - 1) {
+        this.currentSelection++;
+        if (this.updateFieldStyles) this.updateFieldStyles();
+      }
+    };
+
+    // Enter key to activate field, Space only for checkbox
+    const activateHandler = (_ch: any, key: any) => {
+      if (!this.isPanelFocused || this.isEditingField) return;
+      
+      if (key.name === 'enter') {
+        const element = focusableElements[this.currentSelection];
+        if (element && element.parent) {
+          if (this.currentSelection === 4) {
+            // Handle start button
+            startButton.press();
+          } else if (this.currentSelection === 5) {
+            // Handle stop button
+            stopButton.press();
+          } else if (this.currentSelection === 1) {
+            // Handle checkbox
+            batchCheckbox.toggle();
+          } else {
+            // Handle text fields
+            this.isEditingField = true;
+            if (this.updateFieldStyles) this.updateFieldStyles();
+            element.focus();
+          }
+        }
+      } else if (key.name === 'space' && this.currentSelection === 1) {
+        // Space only works for checkbox
+        batchCheckbox.toggle();
       }
     };
 

@@ -6,7 +6,6 @@ export class NuclearThroneUI {
   private screen: Widgets.Screen;
   private modeBox: Widgets.BoxElement;
   private menuBox: Widgets.ListElement;
-  private statusBox: Widgets.BoxElement;
   private rightPanel: Widgets.BoxElement | null = null;
   private formElements: Widgets.BlessedElement[] = [];
   private state: ApplicationState;
@@ -46,7 +45,7 @@ export class NuclearThroneUI {
       top: 0,
       left: 0,
       width: '100%',
-      height: '100%-4',
+      height: '100%',
       border: {
         type: 'line',
       },
@@ -83,24 +82,7 @@ export class NuclearThroneUI {
       items: this.modes.map((m) => m.label),
     });
 
-    this.statusBox = blessed.box({
-      bottom: 0,
-      left: 0,
-      width: '100%',
-      height: 4,
-      border: {
-        type: 'line',
-      },
-      style: {
-        border: {
-          fg: 'green',
-        },
-      },
-      content: this.getStatusText(),
-    });
-
     this.screen.append(this.modeBox);
-    this.screen.append(this.statusBox);
 
     this.setupEventHandlers();
     this.render();
@@ -128,7 +110,6 @@ export class NuclearThroneUI {
         const mode = this.modes[index];
         if (mode) {
           this.onModeChange(mode.value);
-          this.updateStatus();
           this.handleModeChange();
           if (mode.value !== 'welcome') {
             this.isPanelFocused = true;
@@ -142,7 +123,6 @@ export class NuclearThroneUI {
       if (this.isPanelFocused) {
         this.isPanelFocused = false;
         this.menuBox.focus();
-        this.updateStatus();
         this.render();
       } else {
         // Original ESC behavior - exit app
@@ -187,6 +167,8 @@ export class NuclearThroneUI {
       },
       label: ` ${this.modes.find((m) => m.value === this.state.currentMode)?.label || ''} `,
       tags: true,
+      align: this.state.currentMode === 'welcome' ? 'center' : 'left',
+      valign: this.state.currentMode === 'welcome' ? 'middle' : 'top',
     });
 
     if (this.state.currentMode === 'welcome') {
@@ -1238,27 +1220,6 @@ export class NuclearThroneUI {
     return '';
   }
 
-  private getStatusText(): string {
-    const currentModeLabel =
-      this.modes.find((m) => m.value === this.state.currentMode)?.label || '';
-    
-    if (this.isPanelFocused) {
-      return (
-        ` Current Mode: ${currentModeLabel}\n` +
-        ` Press ESC to return to mode selection | Use arrows/Tab to navigate form | Press 'q' to quit`
-      );
-    } else {
-      return (
-        ` Current Mode: ${currentModeLabel}\n` +
-        ` Press 'q' to quit | Use arrow keys to select mode | Press Enter to choose`
-      );
-    }
-  }
-
-  private updateStatus(): void {
-    this.statusBox.setContent(this.getStatusText());
-    this.render();
-  }
 
   private render(): void {
     this.screen.render();
@@ -1267,7 +1228,6 @@ export class NuclearThroneUI {
   public updateState(state: ApplicationState): void {
     const modeChanged = this.state.currentMode !== state.currentMode;
     this.state = state;
-    this.updateStatus();
     
     // Only handle mode change if the mode actually changed
     if (modeChanged) {

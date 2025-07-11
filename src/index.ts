@@ -1,6 +1,6 @@
 import { NuclearThroneUI } from './ui.js';
 
-export type Mode = 'welcome' | 'data-collection' | 'training' | 'live';
+export type Mode = 'welcome' | 'data-collection' | 'training' | 'agent';
 
 export interface DataCollectionConfig {
   captureInterval: number; // placeholder
@@ -15,7 +15,7 @@ export interface TrainingConfig {
   modelPath: string; // placeholder
 }
 
-export interface LiveConfig {
+export interface AgentConfig {
   inferenceDelay: number; // placeholder
   confidenceThreshold: number; // placeholder
   actionTimeout: number; // placeholder
@@ -30,7 +30,7 @@ export interface ApplicationState {
   welcome: WelcomeConfig;
   dataCollection: DataCollectionConfig;
   training: TrainingConfig;
-  live: LiveConfig;
+  agent: AgentConfig;
 }
 
 class ApplicationStateManager {
@@ -52,7 +52,7 @@ class ApplicationStateManager {
         epochs: 100,
         modelPath: './models',
       },
-      live: {
+      agent: {
         inferenceDelay: 50,
         confidenceThreshold: 0.8,
         actionTimeout: 1000,

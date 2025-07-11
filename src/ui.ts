@@ -14,7 +14,7 @@ export class NuclearThroneUI {
     { value: 'welcome', label: 'Welcome' },
     { value: 'data-collection', label: 'Data Collection Mode' },
     { value: 'training', label: 'Training Mode' },
-    { value: 'live', label: 'Live Mode' },
+    { value: 'agent', label: 'Agent Mode' },
   ];
 
   constructor(state: ApplicationState, onModeChange: (mode: Mode) => void) {
@@ -156,7 +156,7 @@ export class NuclearThroneUI {
         '{cyan-fg}Getting Started:{/}\n' +
         '• Select {yellow-fg}Data Collection Mode{/} to record gameplay\n' +
         '• Use {yellow-fg}Training Mode{/} to train the AI model\n' +
-        '• Run {yellow-fg}Live Mode{/} to watch the bot play\n\n' +
+        '• Run {yellow-fg}Agent Mode{/} to watch the bot play\n\n' +
         '{dim-fg}Navigate with arrow keys • Press Enter to select{/}';
 
       return logo + welcome;

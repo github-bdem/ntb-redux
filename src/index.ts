@@ -1,7 +1,7 @@
 import blessed from 'blessed';
 import { Widgets } from 'blessed';
 
-type Mode = 'data-collection' | 'training' | 'live';
+type Mode = 'welcome' | 'data-collection' | 'training' | 'live';
 
 interface DataCollectionConfig {
   captureInterval: number; // placeholder
@@ -22,31 +22,37 @@ interface LiveConfig {
   actionTimeout: number; // placeholder
 }
 
+interface WelcomeConfig {
+  // No config needed for welcome mode
+}
+
 interface ApplicationState {
   currentMode: Mode;
+  welcome: WelcomeConfig;
   dataCollection: DataCollectionConfig;
   training: TrainingConfig;
   live: LiveConfig;
 }
 
 const initialState: ApplicationState = {
-  currentMode: 'data-collection',
+  currentMode: 'welcome',
+  welcome: {},
   dataCollection: {
     captureInterval: 100,
     saveDirectory: './data',
-    maxSamples: 10000
+    maxSamples: 10000,
   },
   training: {
     batchSize: 32,
     learningRate: 0.001,
     epochs: 100,
-    modelPath: './models'
+    modelPath: './models',
   },
   live: {
     inferenceDelay: 50,
     confidenceThreshold: 0.8,
-    actionTimeout: 1000
-  }
+    actionTimeout: 1000,
+  },
 };
 
 class NuclearThroneUI {
@@ -57,17 +63,18 @@ class NuclearThroneUI {
   private rightPanel: Widgets.BoxElement | null = null;
   private state: ApplicationState;
   private modes: { value: Mode; label: string }[] = [
+    { value: 'welcome', label: 'Welcome' },
     { value: 'data-collection', label: 'Data Collection Mode' },
     { value: 'training', label: 'Training Mode' },
-    { value: 'live', label: 'Live Mode' }
+    { value: 'live', label: 'Live Mode' },
   ];
 
   constructor() {
     this.state = { ...initialState };
-    
+
     this.screen = blessed.screen({
       smartCSR: true,
-      title: 'Nuclear Throne Bot - Redux'
+      title: 'Nuclear Throne Bot - Redux',
     });
 
     this.screen.key(['escape', 'q', 'C-c'], () => {
@@ -80,14 +87,14 @@ class NuclearThroneUI {
       width: '100%',
       height: '100%-4',
       border: {
-        type: 'line'
+        type: 'line',
       },
       style: {
         border: {
-          fg: 'cyan'
-        }
+          fg: 'cyan',
+        },
       },
-      label: ' NTB-Redux '
+      label: ' NTB-Redux ',
     });
 
     this.menuBox = blessed.list({
@@ -97,23 +104,23 @@ class NuclearThroneUI {
       width: '30%',
       height: this.modes.length + 2, // Height based on number of items + borders
       border: {
-        type: 'line'
+        type: 'line',
       },
       style: {
         border: {
-          fg: 'yellow'
+          fg: 'yellow',
         },
         selected: {
           bg: 'blue',
           fg: 'white',
-          bold: true
-        }
+          bold: true,
+        },
       },
       label: ' Mode Selection ',
       keys: true,
       vi: true,
       mouse: true,
-      items: this.modes.map(m => m.label)
+      items: this.modes.map((m) => m.label),
     });
 
     this.statusBox = blessed.box({
@@ -122,14 +129,14 @@ class NuclearThroneUI {
       width: '100%',
       height: 4,
       border: {
-        type: 'line'
+        type: 'line',
       },
       style: {
         border: {
-          fg: 'green'
-        }
+          fg: 'green',
+        },
       },
-      content: this.getStatusText()
+      content: this.getStatusText(),
     });
 
     this.screen.append(this.modeBox);
@@ -166,24 +173,55 @@ class NuclearThroneUI {
       width: '68%',
       height: '100%-2',
       border: {
-        type: 'line'
+        type: 'line',
       },
       style: {
         border: {
-          fg: 'white'
-        }
+          fg: 'white',
+        },
       },
-      label: ` ${this.modes.find(m => m.value === this.state.currentMode)?.label || ''} `
+      label: ` ${this.modes.find((m) => m.value === this.state.currentMode)?.label || ''} `,
+      content: this.getModeContent(),
+      align: 'center',
+      valign: 'middle',
+      tags: true,
     });
 
     this.render();
   }
 
+  private getModeContent(): string {
+    if (this.state.currentMode === 'welcome') {
+      const logo = [
+        '{bold}{yellow-fg}███╗   ██╗████████╗██████╗       ██████╗ {/}',
+        '{bold}{yellow-fg}████╗  ██║╚══██╔══╝██╔══██╗      ██╔══██╗{/}',
+        '{bold}{yellow-fg}██╔██╗ ██║   ██║   ██████╔╝█████╗██████╔╝{/}',
+        '{bold}{yellow-fg}██║╚██╗██║   ██║   ██╔══██╗╚════╝██╔══██╗{/}',
+        '{bold}{yellow-fg}██║ ╚████║   ██║   ██████╔╝      ██║  ██║{/}',
+        '{bold}{yellow-fg}╚═╝  ╚═══╝   ╚═╝   ╚═════╝       ╚═╝  ╚═╝{/}',
+      ].join('\n');
+
+      const welcome =
+        '\n\n{bold}{green-fg}Welcome to Nuclear Throne Bot Redux!{/}\n\n' +
+        '{white-fg}An AI-powered bot for playing Nuclear Throne{/}\n\n' +
+        '{cyan-fg}Getting Started:{/}\n' +
+        '• Select {yellow-fg}Data Collection Mode{/} to record gameplay\n' +
+        '• Use {yellow-fg}Training Mode{/} to train the AI model\n' +
+        '• Run {yellow-fg}Live Mode{/} to watch the bot play\n\n' +
+        'Navigate with arrow keys • Press Enter to select{/}';
+
+      return logo + welcome;
+    }
+    return '';
+  }
 
   private getStatusText(): string {
-    const currentModeLabel = this.modes.find(m => m.value === this.state.currentMode)?.label || '';
-    return ` Current Mode: ${currentModeLabel}\n` +
-           ` Press 'q' or 'ESC' to quit | Use arrow keys to navigate`;
+    const currentModeLabel =
+      this.modes.find((m) => m.value === this.state.currentMode)?.label || '';
+    return (
+      ` Current Mode: ${currentModeLabel}\n` +
+      ` Press 'q' or 'ESC' to quit | Use arrow keys to navigate`
+    );
   }
 
   private updateStatus(): void {

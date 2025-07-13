@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { InputEvent } from './input-capture.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { WindowGeometry } from './screenshot-capture.js';
 
 const execAsync = promisify(exec);
 
@@ -11,6 +12,14 @@ export class XInputCapture {
   private processes: ChildProcess[] = [];
   private keyboardDevices: string[] = [];
   private pointerDevices: string[] = [];
+  private windowGeometry: WindowGeometry | null = null;
+  private lastMouseX = 0;
+  private lastMouseY = 0;
+
+  setWindowGeometry(geometry: WindowGeometry): void {
+    this.windowGeometry = geometry;
+    console.log(`Window geometry set: ${geometry.width}x${geometry.height} at (${geometry.x}, ${geometry.y})`);
+  }
 
   async startCapturing(): Promise<void> {
     this.isCapturing = true;
@@ -125,23 +134,33 @@ export class XInputCapture {
         if (buttonMatch && buttonMatch[1]) {
           const buttonNum = parseInt(buttonMatch[1]);
           const button = this.buttonToName(buttonNum);
+          const { x, y } = this.convertToWindowCoordinates(this.lastMouseX, this.lastMouseY);
 
           this.events.push({
             timestamp: Date.now(),
             type: 'mouse',
             action,
             button,
+            x,
+            y,
           });
 
-          console.log(`Mouse button event: ${button} ${action}`);
+          console.log(`Mouse button event: ${button} ${action} at window coords (${x}, ${y})`);
         }
       } else if (line.includes('motion')) {
         // Parse mouse motion: motion a[0]=1234 a[1]=567
         const motionMatch = line.match(/motion a\[0\]=(\d+) a\[1\]=(\d+)/);
 
         if (motionMatch && motionMatch[1] && motionMatch[2]) {
-          const x = parseInt(motionMatch[1]);
-          const y = parseInt(motionMatch[2]);
+          const absoluteX = parseInt(motionMatch[1]);
+          const absoluteY = parseInt(motionMatch[2]);
+          
+          // Store absolute position for button events
+          this.lastMouseX = absoluteX;
+          this.lastMouseY = absoluteY;
+          
+          // Convert to window coordinates
+          const { x, y } = this.convertToWindowCoordinates(absoluteX, absoluteY);
 
           this.events.push({
             timestamp: Date.now(),
@@ -152,8 +171,8 @@ export class XInputCapture {
           });
 
           // Log less frequently for mouse movement to avoid spam
-          if (Math.random() < 0.1) {
-            console.log(`Mouse motion: x=${x}, y=${y}`);
+          if (Math.random() < 0.05) {
+            console.log(`Mouse motion: window coords (${x}, ${y}) from absolute (${absoluteX}, ${absoluteY})`);
           }
         }
       }
@@ -238,6 +257,23 @@ export class XInputCapture {
     };
 
     return keyMap[keyCode] || `key_${keyCode}`;
+  }
+
+  private convertToWindowCoordinates(absoluteX: number, absoluteY: number): { x: number; y: number } {
+    if (!this.windowGeometry) {
+      // If no window geometry is set, return absolute coordinates
+      return { x: absoluteX, y: absoluteY };
+    }
+
+    // Calculate relative position
+    let relativeX = absoluteX - this.windowGeometry.x;
+    let relativeY = absoluteY - this.windowGeometry.y;
+
+    // Constrain to window bounds
+    relativeX = Math.max(0, Math.min(relativeX, this.windowGeometry.width));
+    relativeY = Math.max(0, Math.min(relativeY, this.windowGeometry.height));
+
+    return { x: relativeX, y: relativeY };
   }
 
   private buttonToName(buttonNum: number): 'left' | 'right' | 'middle' {

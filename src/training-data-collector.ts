@@ -1,4 +1,4 @@
-import { ScreenshotCapture } from './screenshot-capture.js';
+import { ScreenshotCapture, WindowGeometry } from './screenshot-capture.js';
 import { InputEvent } from './input-capture.js';
 import { XInputCapture } from './xinput-capture.js';
 import { promises as fs } from 'fs';
@@ -28,6 +28,7 @@ export class TrainingDataCollector {
   private screenshotCapture: ScreenshotCapture;
   private inputCapture: XInputCapture; // Using xinput for real input capture
   private gameWindowId: string | null = null;
+  private gameWindowGeometry: WindowGeometry | null = null;
   private isCollecting = false;
   private dataPoints: TrainingDataPoint[] = [];
   private config: DataCollectionConfig;
@@ -60,6 +61,13 @@ export class TrainingDataCollector {
 
     this.gameWindowId = gameWindow.id;
     console.log(`Found game window: ${gameWindow.title} (ID: ${gameWindow.id})`);
+    
+    // Get window geometry
+    this.gameWindowGeometry = await this.screenshotCapture.getWindowGeometry(gameWindow.id);
+    console.log(`Window geometry: ${this.gameWindowGeometry.width}x${this.gameWindowGeometry.height} at (${this.gameWindowGeometry.x}, ${this.gameWindowGeometry.y})`);
+    
+    // Set geometry in input capture
+    this.inputCapture.setWindowGeometry(this.gameWindowGeometry);
   }
 
   async startCollection(): Promise<void> {
@@ -120,18 +128,18 @@ export class TrainingDataCollector {
 
       await this.screenshotCapture.captureWindowById(this.gameWindowId!, filePath);
 
-      // Get image dimensions (assume 320x240 for now, could be dynamic)
+      // Use actual window dimensions
       screenshot = {
         filePath,
-        width: 320,
-        height: 240,
+        width: this.gameWindowGeometry?.width || 320,
+        height: this.gameWindowGeometry?.height || 240,
       };
     } else {
       const buffer = await this.screenshotCapture.captureWindowToBuffer(this.gameWindowId!);
       screenshot = {
         buffer,
-        width: 320,
-        height: 240,
+        width: this.gameWindowGeometry?.width || 320,
+        height: this.gameWindowGeometry?.height || 240,
       };
     }
 

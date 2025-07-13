@@ -7,14 +7,52 @@ import { join } from 'path';
 
 const execAsync = promisify(exec);
 
-interface WindowInfo {
+export interface WindowInfo {
   id: string;
   title: string;
   class: string;
   geometry: string;
 }
 
+export interface WindowGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export class ScreenshotCapture {
+  // Get window geometry by ID
+  async getWindowGeometry(windowId: string): Promise<WindowGeometry> {
+    try {
+      const { stdout } = await execAsync(`xwininfo -id ${windowId} | grep -E "(Absolute upper-left X:|Absolute upper-left Y:|Width:|Height:)"`);
+      const lines = stdout.trim().split('\n');
+      
+      let x = 0, y = 0, width = 0, height = 0;
+      
+      for (const line of lines) {
+        if (line.includes('Absolute upper-left X:')) {
+          const value = line.split(':')[1];
+          if (value) x = parseInt(value.trim());
+        } else if (line.includes('Absolute upper-left Y:')) {
+          const value = line.split(':')[1];
+          if (value) y = parseInt(value.trim());
+        } else if (line.includes('Width:')) {
+          const value = line.split(':')[1];
+          if (value) width = parseInt(value.trim());
+        } else if (line.includes('Height:')) {
+          const value = line.split(':')[1];
+          if (value) height = parseInt(value.trim());
+        }
+      }
+      
+      return { x, y, width, height };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to get window geometry: ${errorMessage}`);
+    }
+  }
+
   // Get list of windows
   async getWindows(): Promise<WindowInfo[]> {
     try {

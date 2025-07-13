@@ -56,7 +56,12 @@ class GameWindowCapture {
 const gameCapture = new GameWindowCapture();
 await gameCapture.findGameWindow('nuclearthrone');
 
-await gameCapture.startCapturing(1000, (frame) => {
+let numberOfPacketsToCapture = 10;
+let i = 0;
+
+const finish = await gameCapture.startCapturing(1000, (frame) => {
   // Process frame for ML inference
   console.log(`Captured frame: ${frame.length} bytes`);
+  i += 1;
+  if (i === numberOfPacketsToCapture) finish();
 });

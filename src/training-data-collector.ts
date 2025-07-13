@@ -1,5 +1,6 @@
 import { ScreenshotCapture } from './screenshot-capture.js';
-import { InputCapture, InputEvent, SimpleInputCapture } from './input-capture.js';
+import { InputEvent } from './input-capture.js';
+import { XInputCapture } from './xinput-capture.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
@@ -25,7 +26,7 @@ export interface DataCollectionConfig {
 
 export class TrainingDataCollector {
   private screenshotCapture: ScreenshotCapture;
-  private inputCapture: SimpleInputCapture; // Using simple version for reliability
+  private inputCapture: XInputCapture; // Using xinput for real input capture
   private gameWindowId: string | null = null;
   private isCollecting = false;
   private dataPoints: TrainingDataPoint[] = [];
@@ -33,7 +34,7 @@ export class TrainingDataCollector {
 
   constructor(config: DataCollectionConfig) {
     this.screenshotCapture = new ScreenshotCapture();
-    this.inputCapture = new SimpleInputCapture();
+    this.inputCapture = new XInputCapture();
     this.config = config;
   }
 
@@ -107,9 +108,8 @@ export class TrainingDataCollector {
   private async collectDataPoint(): Promise<void> {
     const timestamp = Date.now();
 
-    // Get recent input events (this line would be for the full not simple version)
-    // const inputEvents = this.inputCapture.getNewEvents ? this.inputCapture.getNewEvents() : [];
-    const inputEvents = [] as InputEvent[];
+    // Get recent input events
+    const inputEvents = this.inputCapture.getNewEvents();
 
     // Capture screenshot
     let screenshot: TrainingDataPoint['screenshot'];

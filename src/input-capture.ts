@@ -1,6 +1,6 @@
 // import { createReadStream } from 'fs';
 import { promisify } from 'util';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 
 const execAsync = promisify(exec);
 
@@ -20,6 +20,7 @@ export class InputCapture {
   private events: InputEvent[] = [];
   private keyboardDevice: string | null = null;
   private mouseDevice: string | null = null;
+  private processes: any[] = [];
 
   constructor() {}
 
@@ -111,6 +112,7 @@ export class InputCapture {
       const keyboardId = stdout.trim();
 
       const process = spawn('xinput', ['test', keyboardId]);
+      this.processes.push(process);
 
       process.stdout?.on('data', (data) => {
         if (!this.isCapturing) return;
@@ -134,6 +136,10 @@ export class InputCapture {
           }
         }
       });
+
+      process.stderr?.on('data', (data) => {
+        console.error('xinput keyboard error:', data.toString());
+      });
     } catch (error) {
       console.warn('Failed to capture keyboard events:', error);
     }
@@ -148,6 +154,7 @@ export class InputCapture {
       const mouseId = stdout.trim();
 
       const process = spawn('xinput', ['test', mouseId]);
+      this.processes.push(process);
 
       process.stdout?.on('data', (data) => {
         if (!this.isCapturing) return;
@@ -184,6 +191,10 @@ export class InputCapture {
           }
         }
       });
+
+      process.stderr?.on('data', (data) => {
+        console.error('xinput mouse error:', data.toString());
+      });
     } catch (error) {
       console.warn('Failed to capture mouse events:', error);
     }
@@ -192,6 +203,15 @@ export class InputCapture {
   // Stop capturing and return collected events
   stopCapturing(): InputEvent[] {
     this.isCapturing = false;
+    
+    // Kill all processes
+    this.processes.forEach((proc) => {
+      if (!proc.killed) {
+        proc.kill('SIGTERM');
+      }
+    });
+    this.processes = [];
+    
     console.log(`Captured ${this.events.length} input events`);
     return [...this.events];
   }
@@ -270,7 +290,6 @@ export class InputCapture {
 }
 
 // Alternative simpler approach using global key/mouse listeners
-import { spawn } from 'child_process';
 
 export class SimpleInputCapture {
   private events: InputEvent[] = [];

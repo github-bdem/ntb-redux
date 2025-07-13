@@ -10,27 +10,33 @@ export class XInputCapture {
   private isCapturing = false;
   private processes: ChildProcess[] = [];
   private keyboardDevices: string[] = [];
+  private pointerDevices: string[] = [];
 
   async startCapturing(): Promise<void> {
     this.isCapturing = true;
     this.events = [];
 
     try {
-      // Find keyboard devices
-      await this.findKeyboardDevices();
+      // Find keyboard and pointer devices
+      await this.findInputDevices();
 
       // Start capturing from each keyboard device
       for (const deviceId of this.keyboardDevices) {
         this.captureFromDevice(deviceId);
       }
 
-      console.log(`Started xinput capture with ${this.keyboardDevices.length} keyboard device(s)`);
+      // Start capturing from each pointer device
+      for (const deviceId of this.pointerDevices) {
+        this.captureFromDevice(deviceId);
+      }
+
+      console.log(`Started xinput capture with ${this.keyboardDevices.length} keyboard device(s) and ${this.pointerDevices.length} pointer device(s)`);
     } catch (error) {
       console.error('Failed to start xinput capture:', error);
     }
   }
 
-  private async findKeyboardDevices(): Promise<void> {
+  private async findInputDevices(): Promise<void> {
     try {
       const { stdout } = await execAsync('xinput list --short');
       const lines = stdout.split('\n');
@@ -42,6 +48,14 @@ export class XInputCapture {
           if (idMatch && idMatch[1]) {
             this.keyboardDevices.push(idMatch[1]);
             console.log(`Found keyboard device: ${line.trim()}`);
+          }
+        }
+        // Look for pointer devices (mice)
+        else if (line.includes('pointer') && !line.includes('Virtual') && line.includes('id=')) {
+          const idMatch = line.match(/id=(\d+)/);
+          if (idMatch && idMatch[1]) {
+            this.pointerDevices.push(idMatch[1]);
+            console.log(`Found pointer device: ${line.trim()}`);
           }
         }
       }
@@ -80,6 +94,9 @@ export class XInputCapture {
       // Parse xinput test output
       // key press   17 
       // key release 17
+      // button press   1
+      // button release 1
+      // motion a[0]=1234 a[1]=567
       
       if (line.includes('key press') || line.includes('key release')) {
         const action = line.includes('press') ? 'press' : 'release';
@@ -98,6 +115,46 @@ export class XInputCapture {
           });
           
           console.log(`Key event: ${keyName} ${action} (code: ${keyCode})`);
+        }
+      }
+      else if (line.includes('button press') || line.includes('button release')) {
+        const action = line.includes('press') ? 'press' : 'release';
+        const buttonMatch = line.match(/button (?:press|release)\s+(\d+)/);
+        
+        if (buttonMatch && buttonMatch[1]) {
+          const buttonNum = parseInt(buttonMatch[1]);
+          const button = this.buttonToName(buttonNum);
+          
+          this.events.push({
+            timestamp: Date.now(),
+            type: 'mouse',
+            action,
+            button
+          });
+          
+          console.log(`Mouse button event: ${button} ${action}`);
+        }
+      }
+      else if (line.includes('motion')) {
+        // Parse mouse motion: motion a[0]=1234 a[1]=567
+        const motionMatch = line.match(/motion a\[0\]=(\d+) a\[1\]=(\d+)/);
+        
+        if (motionMatch && motionMatch[1] && motionMatch[2]) {
+          const x = parseInt(motionMatch[1]);
+          const y = parseInt(motionMatch[2]);
+          
+          this.events.push({
+            timestamp: Date.now(),
+            type: 'mouse',
+            action: 'move',
+            x,
+            y
+          });
+          
+          // Log less frequently for mouse movement to avoid spam
+          if (Math.random() < 0.1) {
+            console.log(`Mouse motion: x=${x}, y=${y}`);
+          }
         }
       }
     }
@@ -139,6 +196,20 @@ export class XInputCapture {
     };
     
     return keyMap[keyCode] || `key_${keyCode}`;
+  }
+
+  private buttonToName(buttonNum: number): 'left' | 'right' | 'middle' {
+    // X11 button mappings
+    switch (buttonNum) {
+      case 1:
+        return 'left';
+      case 2:
+        return 'middle';
+      case 3:
+        return 'right';
+      default:
+        return 'left'; // Default to left for other buttons
+    }
   }
 
   stopCapturing(): InputEvent[] {

@@ -48,3 +48,5 @@ yarn.lock
 pnpm-lock.yaml
 
 training_data
+cleaned_data
+

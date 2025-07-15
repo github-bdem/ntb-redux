@@ -12,17 +12,6 @@ interface InputEvent {
   button?: 'left' | 'right' | 'middle';
 }
 
-interface TrainingDataPoint {
-  timestamp: number;
-  screenshot: {
-    buffer?: Buffer;
-    filePath?: string;
-    width: number;
-    height: number;
-  };
-  inputEvents: InputEvent[];
-}
-
 interface ProcessedGameState {
   timestamp: number;
   screenshotPath: string;
@@ -40,7 +29,7 @@ interface ProcessedGameState {
 
 export class GameDataPreprocessor {
   // Clean and filter input events
-  private cleanInputEvents(events: InputEvent[], windowSizeMs: number = 100): InputEvent[] {
+  private cleanInputEvents(events: InputEvent[]): InputEvent[] {
     const cleaned: InputEvent[] = [];
     let lastMousePos = { x: 0, y: 0 };
     const mouseMoveThreshold = 3; // Minimum pixel movement to record

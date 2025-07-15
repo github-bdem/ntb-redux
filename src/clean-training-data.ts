@@ -2,7 +2,8 @@
 
 import { promises as fs } from 'fs';
 import { join, basename } from 'path';
-import { GameDataPreprocessor, processGameData } from './data-preprocessor.js';
+import { fileURLToPath } from 'url';
+import { GameDataPreprocessor } from './data-preprocessor.js';
 
 interface CleaningConfig {
   inputDir: string;
@@ -59,7 +60,7 @@ class TrainingDataCleaner {
         console.log(`  Filtered out: ${processedData.length - filteredData.length}`);
 
         // Copy screenshots to centralized location
-        await this.copyScreenshots(filteredData, session.dir);
+        await this.copyScreenshots(filteredData);
 
         allProcessedData.push(...filteredData);
         totalFrames += processedData.length;
@@ -156,7 +157,7 @@ class TrainingDataCleaner {
     });
   }
 
-  private async copyScreenshots(data: any[], sourceDir: string): Promise<void> {
+  private async copyScreenshots(data: any[]): Promise<void> {
     const screenshotDir = join(this.config.outputDir, 'screenshots');
 
     for (const frame of data) {
@@ -397,7 +398,7 @@ async function main() {
 }
 
 // Run if called directly
-if (require.main === module) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main();
 }
 

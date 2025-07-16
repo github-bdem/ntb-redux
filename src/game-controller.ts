@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 
 import { spawn } from 'child_process';
-import { GameAction } from './realtime_inference.js';
+import { GameAction } from './realtime-inference.js';
 
 interface ControllerConfig {
   deadZone: number; // Minimum movement to register
@@ -26,7 +26,7 @@ class GameController {
     a: false,
     s: false,
     d: false,
-    shooting: false
+    shooting: false,
   };
   private lastMousePosition = { x: 0, y: 0 };
   private isEnabled = true;
@@ -37,13 +37,15 @@ class GameController {
 
   async initialize(): Promise<void> {
     console.log('🎮 Initializing game controller...');
-    
+
     // Test if we can execute input commands
     try {
       await this.testInputSystem();
       console.log('✅ Game controller ready');
     } catch (error) {
-      throw new Error(`Failed to initialize input system: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Failed to initialize input system: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -75,7 +77,6 @@ class GameController {
       if (this.config.debugMode) {
         this.logControllerState();
       }
-
     } catch (error) {
       console.error('❌ Controller error:', error instanceof Error ? error.message : String(error));
     }
@@ -97,10 +98,10 @@ class GameController {
 
     // Determine which keys should be pressed
     const newKeyState = {
-      w: movement.y < -this.config.deadZone,  // Up
-      s: movement.y > this.config.deadZone,   // Down
-      a: movement.x < -this.config.deadZone,  // Left
-      d: movement.x > this.config.deadZone    // Right
+      w: movement.y < -this.config.deadZone, // Up
+      s: movement.y > this.config.deadZone, // Down
+      a: movement.x < -this.config.deadZone, // Left
+      d: movement.x > this.config.deadZone, // Right
     };
 
     // Press/release keys as needed
@@ -109,11 +110,11 @@ class GameController {
 
   private async updateMovementKeys(newState: Partial<KeyState>): Promise<void> {
     const keys = ['w', 'a', 's', 'd'] as const;
-    
+
     for (const key of keys) {
       const shouldPress = newState[key] || false;
       const currentlyPressed = this.currentKeyState[key];
-      
+
       if (shouldPress && !currentlyPressed) {
         // Press key
         await this.pressKey(key);
@@ -128,7 +129,7 @@ class GameController {
 
   private async releaseAllMovementKeys(): Promise<void> {
     const keys = ['w', 'a', 's', 'd'] as const;
-    
+
     for (const key of keys) {
       if (this.currentKeyState[key]) {
         await this.releaseKey(key);
@@ -146,7 +147,7 @@ class GameController {
       // Smooth mouse movement
       const deltaX = (targetX - this.lastMousePosition.x) * this.config.mouseSpeed;
       const deltaY = (targetY - this.lastMousePosition.y) * this.config.mouseSpeed;
-      
+
       if (Math.abs(deltaX) > 1 || Math.abs(deltaY) > 1) {
         await this.moveMouseRelative(deltaX, deltaY);
         this.lastMousePosition.x += deltaX;
@@ -173,7 +174,7 @@ class GameController {
 
   private async pressKey(key: string): Promise<void> {
     await this.executeCommand('xdotool', ['keydown', key]);
-    
+
     if (this.config.debugMode) {
       console.log(`🔽 Key pressed: ${key}`);
     }
@@ -181,7 +182,7 @@ class GameController {
 
   private async releaseKey(key: string): Promise<void> {
     await this.executeCommand('xdotool', ['keyup', key]);
-    
+
     if (this.config.debugMode) {
       console.log(`🔼 Key released: ${key}`);
     }
@@ -189,7 +190,7 @@ class GameController {
 
   private async pressMouseButton(button: number): Promise<void> {
     await this.executeCommand('xdotool', ['mousedown', button.toString()]);
-    
+
     if (this.config.debugMode) {
       console.log(`🖱️ Mouse button pressed: ${button}`);
     }
@@ -197,7 +198,7 @@ class GameController {
 
   private async releaseMouseButton(button: number): Promise<void> {
     await this.executeCommand('xdotool', ['mouseup', button.toString()]);
-    
+
     if (this.config.debugMode) {
       console.log(`🖱️ Mouse button released: ${button}`);
     }
@@ -207,9 +208,10 @@ class GameController {
     // Move mouse to absolute position within the window
     await this.executeCommand('xdotool', [
       'mousemove',
-      '--window', windowId,
+      '--window',
+      windowId,
       x.toString(),
-      y.toString()
+      y.toString(),
     ]);
   }
 
@@ -218,7 +220,7 @@ class GameController {
     await this.executeCommand('xdotool', [
       'mousemove_relative',
       Math.round(deltaX).toString(),
-      Math.round(deltaY).toString()
+      Math.round(deltaY).toString(),
     ]);
   }
 
@@ -256,16 +258,18 @@ class GameController {
     if (this.currentKeyState.a) movementKeys.push('A');
     if (this.currentKeyState.s) movementKeys.push('S');
     if (this.currentKeyState.d) movementKeys.push('D');
-    
-    console.log(`🎮 Keys: [${movementKeys.join(',')}] Mouse: (${this.lastMousePosition.x.toFixed(0)},${this.lastMousePosition.y.toFixed(0)}) Shoot: ${this.currentKeyState.shooting}`);
+
+    console.log(
+      `🎮 Keys: [${movementKeys.join(',')}] Mouse: (${this.lastMousePosition.x.toFixed(0)},${this.lastMousePosition.y.toFixed(0)}) Shoot: ${this.currentKeyState.shooting}`,
+    );
   }
 
   // Emergency stop - release all inputs
   async emergencyStop(): Promise<void> {
     console.log('🚨 Emergency stop - releasing all inputs');
-    
+
     await this.releaseAllMovementKeys();
-    
+
     if (this.currentKeyState.shooting) {
       await this.releaseMouseButton(1);
       this.currentKeyState.shooting = false;
@@ -275,11 +279,11 @@ class GameController {
   // Enable/disable controller
   setEnabled(enabled: boolean): void {
     this.isEnabled = enabled;
-    
+
     if (!enabled) {
       this.emergencyStop();
     }
-    
+
     console.log(`🎮 Controller ${enabled ? 'enabled' : 'disabled'}`);
   }
 
@@ -288,7 +292,7 @@ class GameController {
     return {
       ...this.currentKeyState,
       mousePosition: { ...this.lastMousePosition },
-      enabled: this.isEnabled
+      enabled: this.isEnabled,
     };
   }
 }
@@ -307,7 +311,7 @@ class SafeGameController extends GameController {
   private startSafetyMonitor(): void {
     this.safetyTimer = setInterval(() => {
       const timeSinceLastAction = Date.now() - this.lastActionTime;
-      
+
       if (timeSinceLastAction > this.MAX_INACTIVE_TIME) {
         console.log('⚠️  No actions received recently, safety stop');
         this.emergencyStop();
@@ -325,7 +329,7 @@ class SafeGameController extends GameController {
       clearInterval(this.safetyTimer);
       this.safetyTimer = null;
     }
-    
+
     this.emergencyStop();
   }
 }

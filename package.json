@@ -9,6 +9,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "npm run build; node dist/index.js",
     "collect": "npm run build; node dist/collectData.js",
+    "clean-data": "npm run build; tsx dist/clean-training-data.js ./training_data ./cleaned_data --val-split 0.2 --test-split 0.1",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",

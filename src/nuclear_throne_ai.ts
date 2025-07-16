@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 
-import { RealTimeInference, InferenceConfig, GameAction } from './realtime-inference.js';
-import { SafeGameController, ControllerConfig } from './game-controller.js';
+import { RealTimeInference, InferenceConfig, GameAction } from './realtime_inference.js';
+import { SafeGameController, ControllerConfig } from './game_controller.js';
 import { ScreenshotCapture } from './screenshot-capture.js';
 import { promises as fs } from 'fs';
 
@@ -98,7 +98,7 @@ class NuclearThroneAI {
       const xdotool = spawn('xdotool', ['version']);
       
       await new Promise((resolve, reject) => {
-        xdotool.on('close', (code) => {
+        xdotool.on('close', (code: number | null) => {
           if (code === 0) {
             resolve(void 0);
           } else {
@@ -176,7 +176,7 @@ class NuclearThroneAI {
         }
         
       } catch (error) {
-        console.error('❌ AI loop error:', error.message);
+        console.error('❌ AI loop error:', error instanceof Error ? error.message : String(error));
         
         if (this.config.safetyMode) {
           console.log('🛡️  Safety mode: stopping AI due to error');
@@ -301,7 +301,7 @@ async function main() {
   }
 
   const config: AIConfig = {
-    modelPath: args[0],
+    modelPath: args[0] ?? '',
     gameWindowTitle: 'nuclearthrone',
     targetFPS: 20,
     enableController: true,
@@ -323,10 +323,10 @@ async function main() {
   for (let i = 1; i < args.length; i++) {
     switch (args[i]) {
       case '--window':
-        config.gameWindowTitle = args[++i];
+        config.gameWindowTitle = args[++i] ?? 'nuclearthrone';
         break;
       case '--fps':
-        config.targetFPS = parseInt(args[++i]);
+        config.targetFPS = parseInt(args[++i] ?? '20');
         break;
       case '--no-controller':
         config.enableController = false;
@@ -335,16 +335,16 @@ async function main() {
         config.safetyMode = false;
         break;
       case '--smoothing':
-        config.performance.smoothingFactor = parseFloat(args[++i]);
+        config.performance.smoothingFactor = parseFloat(args[++i] ?? '0.3');
         break;
       case '--confidence':
-        config.performance.confidenceThreshold = parseFloat(args[++i]);
+        config.performance.confidenceThreshold = parseFloat(args[++i] ?? '0.3');
         break;
       case '--dead-zone':
-        config.performance.deadZone = parseFloat(args[++i]);
+        config.performance.deadZone = parseFloat(args[++i] ?? '0.1');
         break;
       case '--mouse-speed':
-        config.performance.mouseSpeed = parseFloat(args[++i]);
+        config.performance.mouseSpeed = parseFloat(args[++i] ?? '1.5');
         break;
       case '--debug':
         config.debug.enabled = true;
@@ -379,7 +379,7 @@ async function main() {
     await ai.initialize();
     await ai.start();
   } catch (error) {
-    console.error('❌ AI failed to start:', error.message);
+    console.error('❌ AI failed to start:', error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }

@@ -61,7 +61,7 @@ class TensorFlowTrainer {
   private async loadDatasets(): Promise<void> {
     console.log('📁 Loading datasets...');
 
-    const datasetInfo = await this.loadDatasetInfo();
+    await this.loadDatasetInfo(); // Load to verify it exists
     const baseDir = this.config.dataDir;
 
     // Load training data
@@ -74,8 +74,8 @@ class TensorFlowTrainer {
     console.log(`  Validation samples: ${valData.samples.length}`);
 
     // Create TensorFlow datasets
-    this.trainDataset = this.createTFDataset(trainData.samples, baseDir, true);
-    this.valDataset = this.createTFDataset(valData.samples, baseDir, false);
+    this.trainDataset = this.createTFDataset(trainData.samples, baseDir, true) as any;
+    this.valDataset = this.createTFDataset(valData.samples, baseDir, false) as any;
   }
 
   private async loadDatasetInfo(): Promise<any> {
@@ -93,7 +93,7 @@ class TensorFlowTrainer {
     samples: DatasetSample[],
     baseDir: string,
     isTraining: boolean,
-  ): tf.data.Dataset<{ xs: tf.Tensor; ys: tf.Tensor }> {
+  ) {
     // Create dataset from generator
     const dataset = tf.data.generator(async function* () {
       for (const sample of samples) {
@@ -111,13 +111,13 @@ class TensorFlowTrainer {
           // Normalize to [0, 1]
           imageTensor = tf.div(imageTensor, 255.0);
 
-          // Create target tensor
+          // Create target tensor with default values for undefined
           const target = tf.tensor1d([
-            sample.outputs.movement_x,
-            sample.outputs.movement_y,
-            sample.outputs.aim_x,
-            sample.outputs.aim_y,
-            sample.outputs.shooting,
+            sample.outputs.movement_x ?? 0,
+            sample.outputs.movement_y ?? 0,
+            sample.outputs.aim_x ?? 0,
+            sample.outputs.aim_y ?? 0,
+            sample.outputs.shooting ?? 0,
           ]);
 
           yield { xs: imageTensor, ys: target };
@@ -275,8 +275,8 @@ class TensorFlowTrainer {
     return model;
   }
 
-  private createCustomLoss(): tf.LossOrMetricFn {
-    return (yTrue: tf.Tensor, yPred: tf.Tensor): tf.Scalar => {
+  private createCustomLoss() {
+    return (yTrue: tf.Tensor, yPred: tf.Tensor) => {
       return tf.tidy(() => {
         // Split predictions and targets
         const predMovement = tf.slice(yPred, [0, 0], [-1, 2]);
@@ -321,22 +321,23 @@ class TensorFlowTrainer {
     this.model.summary();
 
     // Create callbacks
-    const callbacks: tf.CustomCallback[] = [
-      {
-        onEpochEnd: async (epoch: number, logs?: tf.Logs) => {
+    const self = this;
+    const callbacks = [
+      new (class extends tf.Callback {
+        override async onEpochEnd(epoch: number, logs?: tf.Logs) {
           console.log(
-            `Epoch ${epoch + 1}: loss=${logs?.loss?.toFixed(4)}, val_loss=${logs?.val_loss?.toFixed(4)}`,
+            `Epoch ${epoch + 1}: loss=${logs?.['loss']?.toFixed(4)}, val_loss=${logs?.['val_loss']?.toFixed(4)}`,
           );
 
           // Save model checkpoint
-          if (logs?.val_loss && (epoch === 0 || logs.val_loss < this.getBestValLoss())) {
-            await this.saveModel(epoch, logs.val_loss);
+          if (logs?.['val_loss'] && (epoch === 0 || logs['val_loss'] < self.getBestValLoss())) {
+            await self.saveModel(epoch, logs['val_loss'] as number);
           }
-        },
-        onTrainEnd: async () => {
+        }
+        override async onTrainEnd() {
           console.log('✅ Training completed!');
-        },
-      },
+        }
+      })(),
     ];
 
     // Train the model
@@ -414,14 +415,14 @@ class TensorFlowTrainer {
 
     return {
       movement: {
-        x: predictionData[0],
-        y: predictionData[1],
+        x: predictionData[0] ?? 0,
+        y: predictionData[1] ?? 0,
       },
       aim: {
-        x: predictionData[2],
-        y: predictionData[3],
+        x: predictionData[2] ?? 0,
+        y: predictionData[3] ?? 0,
       },
-      shooting: predictionData[4],
+      shooting: predictionData[4] ?? 0,
     };
   }
 

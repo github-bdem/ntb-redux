@@ -5,6 +5,7 @@ import * as tf from '@tensorflow/tfjs-node-gpu'; // For GPU support
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 interface TrainingConfig {
   dataDir: string;
@@ -83,7 +84,7 @@ class TensorFlowTrainer {
   private async loadDatasets(): Promise<void> {
     console.log('📁 Loading datasets...');
 
-    const datasetInfo = await this.loadDatasetInfo();
+    await this.loadDatasetInfo(); // Load to verify it exists
     const baseDir = this.config.dataDir;
 
     // Load training data
@@ -96,8 +97,8 @@ class TensorFlowTrainer {
     console.log(`  Validation samples: ${valData.samples.length}`);
 
     // Create TensorFlow datasets
-    this.trainDataset = this.createTFDataset(trainData.samples, baseDir, true);
-    this.valDataset = this.createTFDataset(valData.samples, baseDir, false);
+    this.trainDataset = this.createTFDataset(trainData.samples, baseDir, true) as any;
+    this.valDataset = this.createTFDataset(valData.samples, baseDir, false) as any;
   }
 
   private async loadDatasetInfo(): Promise<any> {
@@ -115,7 +116,7 @@ class TensorFlowTrainer {
     samples: DatasetSample[],
     baseDir: string,
     isTraining: boolean,
-  ): tf.data.Dataset<{ xs: tf.Tensor; ys: tf.Tensor }> {
+  ) {
     console.log(
       `📊 Creating ${isTraining ? 'training' : 'validation'} dataset with ${samples.length} samples`,
     );
@@ -169,7 +170,7 @@ class TensorFlowTrainer {
             // Simple data augmentation
             const shouldFlip = Math.random() < 0.05; // 5% chance
             if (shouldFlip) {
-              const flipped = tf.image.flipLeftRight(processed);
+              const flipped = tf.image.flipLeftRight(processed as tf.Tensor4D);
               processed.dispose();
               processed = flipped;
             }
@@ -183,13 +184,13 @@ class TensorFlowTrainer {
             }
           }
 
-          // Create target tensor
+          // Create target tensor with default values for undefined
           const target = tf.tensor1d([
-            sample?.outputs.movement_x,
-            sample?.outputs.movement_y,
-            sample?.outputs.aim_x,
-            sample?.outputs.aim_y,
-            sample?.outputs.shooting,
+            sample?.outputs.movement_x ?? 0,
+            sample?.outputs.movement_y ?? 0,
+            sample?.outputs.aim_x ?? 0,
+            sample?.outputs.aim_y ?? 0,
+            sample?.outputs.shooting ?? 0,
           ]);
 
           successCount++;
@@ -334,7 +335,7 @@ class TensorFlowTrainer {
 
         tf.layers.depthwiseConv2d({ kernelSize: 3, activation: 'relu', padding: 'same' }),
         tf.layers.conv2d({ filters: 256, kernelSize: 1, activation: 'relu' }),
-        tf.layers.globalAveragePooling2d(),
+        tf.layers.globalAveragePooling2d({ dataFormat: 'channelsLast' }),
 
         // Custom head
         tf.layers.dropout({ rate: 0.2 }),
@@ -383,7 +384,7 @@ class TensorFlowTrainer {
           activation: 'swish',
           padding: 'same',
         }),
-        tf.layers.globalAveragePooling2d(),
+        tf.layers.globalAveragePooling2d({ dataFormat: 'channelsLast' }),
 
         // Head
         tf.layers.dropout({ rate: 0.2 }),
@@ -397,8 +398,8 @@ class TensorFlowTrainer {
     return model;
   }
 
-  private createCustomLoss(): tf.LossOrMetricFn {
-    return (yTrue: tf.Tensor, yPred: tf.Tensor): tf.Scalar => {
+  private createCustomLoss() {
+    return (yTrue: tf.Tensor, yPred: tf.Tensor) => {
       return tf.tidy(() => {
         // Split predictions and targets
         const predMovement = tf.slice(yPred, [0, 0], [-1, 2]);
@@ -443,22 +444,23 @@ class TensorFlowTrainer {
     this.model.summary();
 
     // Create callbacks
-    const callbacks: tf.CustomCallback[] = [
-      {
-        onEpochEnd: async (epoch: number, logs?: tf.Logs) => {
+    const self = this;
+    const callbacks = [
+      new (class extends tf.Callback {
+        override async onEpochEnd(epoch: number, logs?: tf.Logs) {
           console.log(
-            `Epoch ${epoch + 1}: loss=${logs?.loss?.toFixed(4)}, val_loss=${logs?.val_loss?.toFixed(4)}`,
+            `Epoch ${epoch + 1}: loss=${logs?.['loss']?.toFixed(4)}, val_loss=${logs?.['val_loss']?.toFixed(4)}`,
           );
 
           // Save model checkpoint
-          if (logs?.val_loss && (epoch === 0 || logs.val_loss < this.getBestValLoss())) {
-            await this.saveModel(epoch, logs.val_loss);
+          if (logs?.['val_loss'] && (epoch === 0 || logs['val_loss'] < self.getBestValLoss())) {
+            await self.saveModel(epoch, logs['val_loss'] as number);
           }
-        },
-        onTrainEnd: async () => {
+        }
+        override async onTrainEnd() {
           console.log('✅ Training completed!');
-        },
-      },
+        }
+      })(),
     ];
 
     // Train the model
@@ -536,14 +538,14 @@ class TensorFlowTrainer {
 
     return {
       movement: {
-        x: predictionData[0],
-        y: predictionData[1],
+        x: predictionData[0] ?? 0,
+        y: predictionData[1] ?? 0,
       },
       aim: {
-        x: predictionData[2],
-        y: predictionData[3],
+        x: predictionData[2] ?? 0,
+        y: predictionData[3] ?? 0,
       },
-      shooting: predictionData[4],
+      shooting: predictionData[4] ?? 0,
     };
   }
 
@@ -633,6 +635,6 @@ async function main() {
 export { TensorFlowTrainer, TrainingConfig };
 
 // Run CLI if called directly
-if (require.main === module) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main();
 }

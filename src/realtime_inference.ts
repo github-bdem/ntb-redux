@@ -2,9 +2,7 @@
 
 import * as tf from '@tensorflow/tfjs-node-gpu';
 import { ScreenshotCapture } from './screenshot-capture.js';
-import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
-import { join } from 'path';
 
 interface GameAction {
   movement: { x: number; y: number };
@@ -64,10 +62,10 @@ class RealTimeInference {
     try {
       this.model = await tf.loadLayersModel(`file://${this.config.modelPath}/model.json`);
       console.log('✅ Model loaded successfully');
-      console.log(`📊 Model input shape: ${this.model.inputs[0].shape}`);
-      console.log(`📊 Model output shape: ${this.model.outputs[0].shape}`);
+      console.log(`📊 Model input shape: ${this.model.inputs[0]?.shape}`);
+      console.log(`📊 Model output shape: ${this.model.outputs[0]?.shape}`);
     } catch (error) {
-      throw new Error(`Failed to load model: ${error.message}`);
+      throw new Error(`Failed to load model: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -155,7 +153,7 @@ class RealTimeInference {
         }
         
       } catch (error) {
-        console.error('❌ Inference error:', error.message);
+        console.error('❌ Inference error:', error instanceof Error ? error.message : String(error));
         
         // Brief pause before retrying
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -186,7 +184,7 @@ class RealTimeInference {
     const normalized = tf.div(resized, 255.0);
     resized.dispose();
     
-    return normalized;
+    return normalized as tf.Tensor3D;
   }
 
   private async predict(imageTensor: tf.Tensor3D): Promise<GameAction> {
@@ -207,15 +205,15 @@ class RealTimeInference {
     // Extract action components
     const action: GameAction = {
       movement: {
-        x: predictionData[0],  // -1 to 1
-        y: predictionData[1]   // -1 to 1
+        x: predictionData[0] ?? 0,  // -1 to 1
+        y: predictionData[1] ?? 0   // -1 to 1
       },
       aim: {
-        x: predictionData[2] * 320,  // Denormalize to screen coordinates
-        y: predictionData[3] * 240   // Denormalize to screen coordinates
+        x: (predictionData[2] ?? 0) * 320,  // Denormalize to screen coordinates
+        y: (predictionData[3] ?? 0) * 240   // Denormalize to screen coordinates
       },
-      shooting: predictionData[4] > 0.5,  // Threshold for shooting
-      confidence: this.calculateConfidence(predictionData)
+      shooting: (predictionData[4] ?? 0) > 0.5,  // Threshold for shooting
+      confidence: this.calculateConfidence(predictionData as Float32Array)
     };
     
     return action;
@@ -224,11 +222,11 @@ class RealTimeInference {
   private calculateConfidence(predictionData: Float32Array): number {
     // Simple confidence calculation based on prediction magnitudes
     const movementMagnitude = Math.sqrt(
-      predictionData[0] * predictionData[0] + 
-      predictionData[1] * predictionData[1]
+      (predictionData[0] ?? 0) * (predictionData[0] ?? 0) + 
+      (predictionData[1] ?? 0) * (predictionData[1] ?? 0)
     );
     
-    const shootingConfidence = Math.abs(predictionData[4] - 0.5) * 2; // 0-1 scale
+    const shootingConfidence = Math.abs((predictionData[4] ?? 0) - 0.5) * 2; // 0-1 scale
     
     return Math.min(1.0, (movementMagnitude + shootingConfidence) / 2);
   }
@@ -342,7 +340,7 @@ async function main() {
   }
 
   const config: InferenceConfig = {
-    modelPath: args[0],
+    modelPath: args[0] ?? '',
     gameWindowTitle: 'nuclearthrone',
     inferenceIntervalMs: 100, // 10 FPS
     smoothingFactor: 0.3,
@@ -354,16 +352,16 @@ async function main() {
   for (let i = 1; i < args.length; i++) {
     switch (args[i]) {
       case '--window':
-        config.gameWindowTitle = args[++i];
+        config.gameWindowTitle = args[++i] ?? 'nuclearthrone';
         break;
       case '--fps':
-        config.inferenceIntervalMs = 1000 / parseInt(args[++i]);
+        config.inferenceIntervalMs = 1000 / parseInt(args[++i] ?? '10');
         break;
       case '--smoothing':
-        config.smoothingFactor = parseFloat(args[++i]);
+        config.smoothingFactor = parseFloat(args[++i] ?? '0.3');
         break;
       case '--confidence':
-        config.confidenceThreshold = parseFloat(args[++i]);
+        config.confidenceThreshold = parseFloat(args[++i] ?? '0.3');
         break;
       case '--debug':
         config.debugMode = true;
@@ -392,7 +390,7 @@ async function main() {
     await inference.initialize();
     await inference.startInference();
   } catch (error) {
-    console.error('❌ Inference failed:', error.message);
+    console.error('❌ Inference failed:', error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }

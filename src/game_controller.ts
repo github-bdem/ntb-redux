@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 
 import { spawn } from 'child_process';
-import { GameAction } from './realtime-inference.js';
+import { GameAction } from './realtime_inference.js';
 
 interface ControllerConfig {
   deadZone: number; // Minimum movement to register
@@ -43,7 +43,7 @@ class GameController {
       await this.testInputSystem();
       console.log('✅ Game controller ready');
     } catch (error) {
-      throw new Error(`Failed to initialize input system: ${error.message}`);
+      throw new Error(`Failed to initialize input system: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -73,11 +73,11 @@ class GameController {
       await this.handleShooting(action.shooting);
 
       if (this.config.debugMode) {
-        this.logControllerState(action);
+        this.logControllerState();
       }
 
     } catch (error) {
-      console.error('❌ Controller error:', error.message);
+      console.error('❌ Controller error:', error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -250,7 +250,7 @@ class GameController {
     });
   }
 
-  private logControllerState(action: GameAction): void {
+  private logControllerState(): void {
     const movementKeys = [];
     if (this.currentKeyState.w) movementKeys.push('W');
     if (this.currentKeyState.a) movementKeys.push('A');
@@ -284,7 +284,7 @@ class GameController {
   }
 
   // Get current input state for debugging
-  getCurrentState(): KeyState & { mousePosition: typeof this.lastMousePosition; enabled: boolean } {
+  getCurrentState(): KeyState & { mousePosition: { x: number; y: number }; enabled: boolean } {
     return {
       ...this.currentKeyState,
       mousePosition: { ...this.lastMousePosition },
@@ -315,7 +315,7 @@ class SafeGameController extends GameController {
     }, 1000);
   }
 
-  async executeAction(action: GameAction, gameWindowId: string): Promise<void> {
+  override async executeAction(action: GameAction, gameWindowId: string): Promise<void> {
     this.lastActionTime = Date.now();
     await super.executeAction(action, gameWindowId);
   }

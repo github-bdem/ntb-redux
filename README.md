@@ -1,81 +1,45 @@
 # ntb-redux
 
-LM powered bot to play the video game nuclear throne
+LM powered bot to play the video game nuclear throne. Currently in a very alpha state. Built using Claude-Code as a fun side project to see how 'good' vibe coding is with minimal developer input. It technically does work from end to end but there are tons of things that can be done to improve it and some of the design decisions (mainly the data cleaning layer) are questionable to say the least. This works as a decent proof of concept and a way to get all the steps for the project laid out. Next up I look forward to going through and improving/cleaning everything up by hand.
 
-## Dependencies
+## OS Dependencies
 
-### Ubuntu 24 LTS
+Currently only tested on Ubuntu 24 LTS. The following command will make sure all os level packages are installed.
 
-#### For Screenshots
+- `sudo apt install scrot wmctrl xdotool xinput xev`
 
-- `sudo apt install scrot wmctrl xdotool`
+## From beginning to end:
 
-#### For Keyboard and Mouse Capture
+### Collect Data
 
-- `sudo apt install xinput xev`
-  Then make sure user has access to input devices
+Ensure that nuclearthrone window is running and visible (preferably on the first level so we can skip menus tainting the dataset).
 
-### Cleaning and Training
+`npm run collect`
 
-```
-# Run the cleaning script
-npx run clean-training-data.ts ./training_data ./cleaned_data --val-split 0.2 --test-split 0.1
+This will collect all keyboard and mouse input for 100 seconds along with screenshots of the target window and put them into a `training_data/session_TIMESTAMP` folder
 
-# This will:
-# - Process all sessions in ./training_data
-# - Filter out low-quality frames
-# - Split data into train/validation/test
-# - Create PyTorch-ready datasets
-# - Copy all screenshots to a centralized location
-```
+### Clean the data
 
-# Install TensorFlow.js with GPU support
+NOTE: This step is really whacky right now, it really really needs work.
 
-`npm install -s @tensorflow/tfjs-node-gpu @types/node`
+Once you have the desired number of training data sets, we would want to clean those data sets and format them for our tensorflow inference layer training. Right now we have extremely rudimentary cleaning, but this is just a first up proof of concept.
 
-# OR for CPU only:
+`npm run clean-data`
 
-`npm install @tensorflow/tfjs-node @types/node`
+Will clean data from `training_data` into `cleaned_data`.
 
-# Start with a smaller model for quick testing
+### Train the model
 
-npx tsx ./src/tfjs\_-_training_setup.ts ./cleaned_data --model custom_cnn --epochs 10 --batch-size 4
+Once we have the `cleaned_data` created we will want to finally train our model and save the trained weights.
 
-# Or for a more thorough training run
+`npm run train`
 
-npx tsx ./src/tfjs-training-setup.ts ./cleaned_data --model custom_cnn --epochs 50 --batch-size 8 --learning-rate 0.001
+looks in `cleaned_data` and uses that info for training our tensorflow inference model, which it will then save in `models/model`
 
-npm run train ./cleaned_data --model custom_cnn --epochs 10
+### Run the trained agent
 
-🛡️ Safety Features
+We finally have a happy trained agent, time to allow it to play the game!
 
-Emergency Stop: Ctrl+C stops everything immediately
-Safety Mode: Automatically stops on errors
-No-Controller Mode: Test predictions without actual input
-Confidence Threshold: Only acts when confident
-Dead Zones: Prevents jittery movements
+`npm run agent-mode`
 
-📊 Performance Tuning
-
-FPS: Start with --fps 10, increase as needed
-Confidence: Use --confidence 0.3 for more actions, 0.6 for fewer
-Smoothing: --smoothing 0.1 for responsive, 0.5 for smooth
-Mouse Speed: Adjust --mouse-speed based on your game sensitivity
-
-🐛 Troubleshooting
-If the AI can't find the game window:
-
-Make sure Nuclear Throne is running
-Try different window titles: --window nuclear or --window throne
-
-If inputs don't work:
-
-Check that xdotool is installed: sudo apt install xdotool
-Test with --no-controller first
-Make sure the game window is focused
-
-If performance is poor:
-
-Lower FPS: --fps 10
-Reduce batch size during training
-Use --no-controller for testing
+will find the target window, by default `nuclearthrone`, starts grabbing screenshots of it, and then passes them into our trained tensorflow model (loaded from `models/model`).

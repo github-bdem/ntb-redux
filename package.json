@@ -4,6 +4,9 @@
   "description": "LM powered bot to play the video game nuclear throne",
   "main": "dist/index.js",
   "type": "module",
+  "engines": {
+    "node": "22.13.1"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
@@ -18,7 +21,7 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "warn-clean-all": "rm -rf dist cleaned_data models node_modules training_data"
   },
   "repository": {
     "type": "git",

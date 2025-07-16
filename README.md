@@ -8,7 +8,7 @@ LM powered bot to play the video game nuclear throne
 
 #### For Screenshots
 
-- `sudo apt install scrot wmctrl`
+- `sudo apt install scrot wmctrl xdotool`
 
 #### For Keyboard and Mouse Capture
 

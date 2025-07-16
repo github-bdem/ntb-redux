@@ -4,17 +4,24 @@
   "description": "LM powered bot to play the video game nuclear throne",
   "main": "dist/index.js",
   "type": "module",
+  "engines": {
+    "node": "22.13.1"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "start": "npm run build; node dist/index.js",
     "collect": "npm run build; node dist/collectData.js",
+    "clean-data": "npm run build; tsx dist/clean-training-data.js ./training_data ./cleaned_data --val-split 0.2 --test-split 0.1",
+    "train": "tsx src/tfjs_training_setup.ts ./cleaned_data --model custom_cnn --epochs 10",
+    "safe-test": "tsx src/nuclear_throne_ai.ts ./models/model --no-controller --debug",
+    "agent-mode": "tsx src/nuclear_throne_ai.ts ./models/model --fps 30 --debug",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "warn-clean-all": "rm -rf dist cleaned_data models node_modules training_data"
   },
   "repository": {
     "type": "git",
@@ -28,7 +35,7 @@
   },
   "homepage": "https://github.com/github-bdem/ntb-redux#readme",
   "devDependencies": {
-    "@types/node": "^24.0.13",
+    "@types/node": "^24.0.14",
     "@typescript-eslint/eslint-plugin": "^8.36.0",
     "@typescript-eslint/parser": "^8.36.0",
     "eslint": "^9.30.1",
@@ -39,6 +46,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@tensorflow/tfjs-node-gpu": "^4.22.0",
     "evdev": "^0.3.0"
   }
 }

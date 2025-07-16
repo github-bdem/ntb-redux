@@ -28,7 +28,7 @@
   },
   "homepage": "https://github.com/github-bdem/ntb-redux#readme",
   "devDependencies": {
-    "@types/node": "^24.0.13",
+    "@types/node": "^24.0.14",
     "@typescript-eslint/eslint-plugin": "^8.36.0",
     "@typescript-eslint/parser": "^8.36.0",
     "eslint": "^9.30.1",
@@ -39,6 +39,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@tensorflow/tfjs-node-gpu": "^4.22.0",
     "evdev": "^0.3.0"
   }
 }

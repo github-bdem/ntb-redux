@@ -42,33 +42,12 @@ class TensorFlowTrainer {
   async initialize(): Promise<void> {
     console.log('🔧 Initializing TensorFlow.js training...');
 
-    // Configure for optimal performance
-    if (tf.getBackend() === 'tensorflow') {
-      // For ROCm/GPU backend
-      tf.env().set('WEBGL_DELETE_TEXTURE_THRESHOLD', 0);
-      tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
-      tf.env().set('WEBGL_PACK', true);
+    // Set memory growth to avoid OOM
+    tf.env().set('WEBGL_DELETE_TEXTURE_THRESHOLD', 0);
+    tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
 
-      // Set memory growth for GPU
-      try {
-        const gpuMemoryInfo = tf.memory();
-        console.log(`💾 Initial GPU memory: ${JSON.stringify(gpuMemoryInfo)}`);
-      } catch (e) {
-        console.log('⚠️  GPU memory info not available');
-      }
-    }
-
-    console.log(`🖥️  Backend: ${tf.getBackend()}`);
-    console.log(`📊 TensorFlow.js version: ${tf.version.tfjs}`);
-
-    // Verify we can create tensors
-    try {
-      const testTensor = tf.zeros([1, 3, 240, 320]);
-      console.log(`✅ Test tensor created: ${testTensor.shape}`);
-      testTensor.dispose();
-    } catch (error) {
-      throw new Error(`Failed to create test tensor: ${error}`);
-    }
+    console.log(`Backend: ${tf.getBackend()}`);
+    console.log(`GPU memory info:`, tf.memory());
 
     // Load datasets
     await this.loadDatasets();
@@ -77,7 +56,6 @@ class TensorFlowTrainer {
     this.model = await this.createModel();
 
     console.log('✅ Initialization complete');
-    console.log(`📈 Model parameters: ${this.model.countParams()}`);
   }
 
   private async loadDatasets(): Promise<void> {
@@ -116,100 +94,38 @@ class TensorFlowTrainer {
     baseDir: string,
     isTraining: boolean,
   ): tf.data.Dataset<{ xs: tf.Tensor; ys: tf.Tensor }> {
-    console.log(
-      `📊 Creating ${isTraining ? 'training' : 'validation'} dataset with ${samples.length} samples`,
-    );
-
     // Create dataset from generator
     const dataset = tf.data.generator(async function* () {
-      let successCount = 0;
-      let errorCount = 0;
-
-      for (let i = 0; i < samples.length; i++) {
-        const sample = samples[i];
-
+      for (const sample of samples) {
         try {
           // Load and preprocess image
-          const imagePath = path.isAbsolute(sample?.screenshot || '')
-            ? sample?.screenshot
-            : path.join(baseDir, sample?.screenshot || '');
-
-          // Check if file exists
-          try {
-            await fs.access(imagePath || '');
-          } catch {
-            console.warn(`⚠️  Image not found: ${imagePath}`);
-            errorCount++;
-            continue;
-          }
-
-          const imageBuffer = await fs.readFile(imagePath || '');
+          const imagePath = path.join(baseDir, sample.screenshot);
+          const imageBuffer = await fs.readFile(imagePath);
 
           // Decode image using TensorFlow.js
-          let imageTensor: tf.Tensor3D;
-          try {
-            imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
-          } catch (decodeError) {
-            console.warn(
-              `⚠️  Failed to decode image ${path.basename(imagePath || '')}: ${decodeError}`,
-            );
-            errorCount++;
-            continue;
-          }
+          let imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
 
-          // Resize to model input size (240x320)
-          const resized = tf.image.resizeBilinear(imageTensor, [240, 320]);
-          imageTensor.dispose();
+          // Resize to model input size
+          imageTensor = tf.image.resizeBilinear(imageTensor, [240, 320]);
 
-          // Normalize to [0, 1] and apply augmentation if training
-          let processed = tf.div(resized, 255.0);
-          resized.dispose();
-
-          if (isTraining) {
-            // Simple data augmentation
-            const shouldFlip = Math.random() < 0.05; // 5% chance
-            if (shouldFlip) {
-              const flipped = tf.image.flipLeftRight(processed);
-              processed.dispose();
-              processed = flipped;
-            }
-
-            // Slight brightness adjustment
-            const brightnessAdjust = (Math.random() - 0.5) * 0.1; // ±5%
-            if (Math.abs(brightnessAdjust) > 0.01) {
-              const brightened = tf.add(processed, brightnessAdjust);
-              processed.dispose();
-              processed = brightened;
-            }
-          }
+          // Normalize to [0, 1]
+          imageTensor = tf.div(imageTensor, 255.0);
 
           // Create target tensor
           const target = tf.tensor1d([
-            sample?.outputs.movement_x,
-            sample?.outputs.movement_y,
-            sample?.outputs.aim_x,
-            sample?.outputs.aim_y,
-            sample?.outputs.shooting,
+            sample.outputs.movement_x,
+            sample.outputs.movement_y,
+            sample.outputs.aim_x,
+            sample.outputs.aim_y,
+            sample.outputs.shooting,
           ]);
 
-          successCount++;
-
-          // Progress logging
-          if (successCount % 50 === 0) {
-            console.log(
-              `  📸 Processed ${successCount}/${samples.length} images (${errorCount} errors)`,
-            );
-          }
-
-          yield { xs: processed, ys: target };
+          yield { xs: imageTensor, ys: target };
         } catch (error) {
-          console.warn(`⚠️  Error processing sample ${i}: ${error}`);
-          errorCount++;
+          console.warn(`Failed to load sample: ${sample.screenshot}`, error);
           continue;
         }
       }
-
-      console.log(`✅ Dataset creation complete: ${successCount} successful, ${errorCount} errors`);
     });
 
     // Apply batching and shuffling
@@ -238,74 +154,36 @@ class TensorFlowTrainer {
   }
 
   private createCustomCNN(): tf.LayersModel {
-    console.log('🧠 Creating custom CNN optimized for Nuclear Throne...');
-
     const model = tf.sequential({
       layers: [
-        // Input layer - Nuclear Throne resolution
+        // Input layer
         tf.layers.conv2d({
           inputShape: [240, 320, 3],
           filters: 32,
           kernelSize: 3,
           activation: 'relu',
           padding: 'same',
-          name: 'conv1',
         }),
-        tf.layers.batchNormalization({ name: 'bn1' }),
-        tf.layers.maxPooling2d({ poolSize: 2, name: 'pool1' }), // 120x160
+        tf.layers.maxPooling2d({ poolSize: 2 }),
 
         // Feature extraction layers
-        tf.layers.conv2d({
-          filters: 64,
-          kernelSize: 3,
-          activation: 'relu',
-          padding: 'same',
-          name: 'conv2',
-        }),
-        tf.layers.batchNormalization({ name: 'bn2' }),
-        tf.layers.maxPooling2d({ poolSize: 2, name: 'pool2' }), // 60x80
+        tf.layers.conv2d({ filters: 64, kernelSize: 3, activation: 'relu', padding: 'same' }),
+        tf.layers.maxPooling2d({ poolSize: 2 }),
 
-        tf.layers.conv2d({
-          filters: 128,
-          kernelSize: 3,
-          activation: 'relu',
-          padding: 'same',
-          name: 'conv3',
-        }),
-        tf.layers.batchNormalization({ name: 'bn3' }),
-        tf.layers.maxPooling2d({ poolSize: 2, name: 'pool3' }), // 30x40
+        tf.layers.conv2d({ filters: 128, kernelSize: 3, activation: 'relu', padding: 'same' }),
+        tf.layers.maxPooling2d({ poolSize: 2 }),
 
-        tf.layers.conv2d({
-          filters: 256,
-          kernelSize: 3,
-          activation: 'relu',
-          padding: 'same',
-          name: 'conv4',
-        }),
-        tf.layers.batchNormalization({ name: 'bn4' }),
-        tf.layers.globalAveragePooling2d({ name: 'gap' }),
+        tf.layers.conv2d({ filters: 256, kernelSize: 3, activation: 'relu', padding: 'same' }),
+        tf.layers.globalAveragePooling2d({ dataFormat: 'channelsLast' }),
 
         // Decision layers
-        tf.layers.dropout({ rate: 0.3, name: 'dropout1' }),
-        tf.layers.dense({
-          units: 256,
-          activation: 'relu',
-          kernelRegularizer: tf.regularizers.l2({ l2: 1e-4 }),
-          name: 'dense1',
-        }),
-        tf.layers.dropout({ rate: 0.2, name: 'dropout2' }),
-        tf.layers.dense({
-          units: 64,
-          activation: 'relu',
-          name: 'dense2',
-        }),
+        tf.layers.dropout({ rate: 0.2 }),
+        tf.layers.dense({ units: 256, activation: 'relu' }),
+        tf.layers.dropout({ rate: 0.2 }),
+        tf.layers.dense({ units: 64, activation: 'relu' }),
 
-        // Output layer - 5 outputs for game actions
-        tf.layers.dense({
-          units: 5,
-          activation: 'linear',
-          name: 'output',
-        }),
+        // Output layer
+        tf.layers.dense({ units: 5, activation: 'linear' }), // movement_x, movement_y, aim_x, aim_y, shooting
       ],
     });
 
@@ -334,7 +212,7 @@ class TensorFlowTrainer {
 
         tf.layers.depthwiseConv2d({ kernelSize: 3, activation: 'relu', padding: 'same' }),
         tf.layers.conv2d({ filters: 256, kernelSize: 1, activation: 'relu' }),
-        tf.layers.globalAveragePooling2d(),
+        tf.layers.globalAveragePooling2d({ dataFormat: 'channelsLast' }),
 
         // Custom head
         tf.layers.dropout({ rate: 0.2 }),
@@ -383,7 +261,7 @@ class TensorFlowTrainer {
           activation: 'swish',
           padding: 'same',
         }),
-        tf.layers.globalAveragePooling2d(),
+        tf.layers.globalAveragePooling2d({ dataFormat: 'channelsLast' }),
 
         // Head
         tf.layers.dropout({ rate: 0.2 }),
@@ -494,7 +372,7 @@ class TensorFlowTrainer {
       savedAt: new Date().toISOString(),
     };
 
-    const metadataPath = this.config.savePath.replace('.json', '_metadata.json');
+    const metadataPath = path.join(path.dirname(this.config.savePath), `${path.basename(this.config.savePath)}_metadata.json`);
     await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
 
     console.log(`💾 Model saved: epoch ${epoch + 1}, val_loss=${valLoss.toFixed(4)}`);
@@ -583,7 +461,7 @@ async function main() {
     batchSize: 16,
     learningRate: 0.001,
     validationSplit: 0.2,
-    savePath: './model',
+    savePath: './models/model',
   };
 
   // Parse options
@@ -632,7 +510,6 @@ async function main() {
 // Export for use as module
 export { TensorFlowTrainer, TrainingConfig };
 
-// Run CLI if called directly
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }

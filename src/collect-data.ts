@@ -1,7 +1,8 @@
-import { TrainingDataCollector, DataCollectionConfig } from './training-data-collector.js';
+import type { DataCollectionConfig } from './training-data-collector.js';
+import { TrainingDataCollector } from './training-data-collector.js';
 import { join } from 'path';
 
-async function main() {
+async function main(): Promise<void> {
   // Configuration for data collection
   const config: DataCollectionConfig = {
     outputDir: join(process.cwd(), 'training_data', `session_${Date.now()}`),
@@ -27,6 +28,8 @@ async function main() {
     // Give user time to prepare
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
+    // TODO: May want to set mouse input to top left of game screen on collection and agent play to have consistent
+    // TODO: mouse movement
     await collector.startCollection();
 
     // The collection will run until maxDataPoints is reached
@@ -45,7 +48,7 @@ async function main() {
 }
 
 // Handle Ctrl+C gracefully
-process.on('SIGINT', async () => {
+process.on('SIGINT', () => {
   console.log('\n🛑 Received interrupt signal, stopping data collection...');
 
   // Note: You'll need to store the collector instance globally or use a different approach

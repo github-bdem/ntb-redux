@@ -10,18 +10,18 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
-    "start": "npm run build; node dist/index.js",
-    "collect": "npm run build; node dist/collectData.js",
-    "clean-data": "npm run build; tsx dist/clean-training-data.js ./training_data ./cleaned_data --val-split 0.2 --test-split 0.1",
-    "train": "tsx src/tfjs_training_setup.ts ./cleaned_data --model custom_cnn --epochs 10",
-    "safe-test": "tsx src/nuclear_throne_ai.ts ./models/model --no-controller --debug",
-    "agent-mode": "tsx src/nuclear_throne_ai.ts ./models/model --fps 30 --debug",
-    "lint": "eslint . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix",
+    "start": "tsx src/index.ts",
+    "collect": "tsx src/collect-data.ts",
+    "clean-data": "tsx src/clean-training-data.ts ./training_data ./cleaned_data --val-split 0.2 --test-split 0.1",
+    "train": "tsx src/tfjs-training-setup.ts ./cleaned_data --model custom_cnn --epochs 10",
+    "safe-test": "tsx src/nuclear-throne-ai.ts ./models/model --no-controller --debug",
+    "agent-mode": "tsx src/nuclear-throne-ai.ts ./models/model --fps 30 --debug",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
-    "warn-clean-all": "rm -rf dist cleaned_data models node_modules training_data"
+    "warn-clean-all": "rm -rf dist cleaned_data models node_modules training_data package-lock.json"
   },
   "repository": {
     "type": "git",
@@ -35,6 +35,7 @@
   },
   "homepage": "https://github.com/github-bdem/ntb-redux#readme",
   "devDependencies": {
+    "@eslint/js": "^9.31.0",
     "@types/node": "^24.0.14",
     "@typescript-eslint/eslint-plugin": "^8.36.0",
     "@typescript-eslint/parser": "^8.36.0",

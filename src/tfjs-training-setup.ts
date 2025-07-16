@@ -39,7 +39,7 @@ class TensorFlowTrainer {
     this.config = config;
   }
 
-  async initialize(): Promise<void> {
+  public async initialize(): Promise<void> {
     console.log('🔧 Initializing TensorFlow.js training...');
 
     // Set memory growth to avoid OOM
@@ -53,7 +53,7 @@ class TensorFlowTrainer {
     await this.loadDatasets();
 
     // Create model
-    this.model = await this.createModel();
+    this.model = this.createModel();
 
     console.log('✅ Initialization complete');
   }
@@ -72,26 +72,40 @@ class TensorFlowTrainer {
     console.log(`  Validation samples: ${valData.samples.length}`);
 
     // Create TensorFlow datasets
-    this.trainDataset = this.createTFDataset(trainData.samples, baseDir, true) as any;
-    this.valDataset = this.createTFDataset(valData.samples, baseDir, false) as any;
+    this.trainDataset = this.createTFDataset(trainData.samples, baseDir, true);
+    this.valDataset = this.createTFDataset(valData.samples, baseDir, false);
   }
 
-  private async loadDatasetInfo(): Promise<any> {
+  private async loadDatasetInfo(): Promise<{
+    totalSamples: number;
+    trainSamples: number;
+    valSamples: number;
+    dataFormat: string;
+  }> {
     const infoPath = join(this.config.dataDir, 'dataset_info.json');
     const content = await fs.readFile(infoPath, 'utf8');
-    return JSON.parse(content);
+    return JSON.parse(content) as {
+      totalSamples: number;
+      trainSamples: number;
+      valSamples: number;
+      dataFormat: string;
+    };
   }
 
-  private async loadDatasetFile(filePath: string): Promise<any> {
+  private async loadDatasetFile(filePath: string): Promise<{
+    samples: DatasetSample[];
+  }> {
     const content = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(content);
+    return JSON.parse(content) as {
+      samples: DatasetSample[];
+    };
   }
 
   private createTFDataset(
     samples: DatasetSample[],
     baseDir: string,
     isTraining: boolean,
-  ) {
+  ): tf.data.Dataset<{ xs: tf.Tensor; ys: tf.Tensor }> {
     // Create dataset from generator
     const dataset = tf.data.generator(async function* () {
       for (const sample of samples) {
@@ -136,18 +150,18 @@ class TensorFlowTrainer {
     return processedDataset.batch(this.config.batchSize);
   }
 
-  private async createModel(): Promise<tf.LayersModel> {
+  private createModel(): tf.LayersModel {
     console.log(`🤖 Creating ${this.config.modelType} model...`);
 
     switch (this.config.modelType) {
       case 'custom_cnn':
         return this.createCustomCNN();
       case 'mobilenet':
-        return await this.createMobileNetModel();
+        return this.createMobileNetModel();
       case 'efficientnet':
-        return await this.createEfficientNetModel();
+        return this.createEfficientNetModel();
       default:
-        throw new Error(`Unknown model type: ${this.config.modelType}`);
+        throw new Error(`Unknown model type: ${String(this.config.modelType)}`);
     }
   }
 
@@ -188,7 +202,7 @@ class TensorFlowTrainer {
     return model;
   }
 
-  private async createMobileNetModel(): Promise<tf.LayersModel> {
+  private createMobileNetModel(): tf.LayersModel {
     // Load MobileNet base (this is a simplified version - TensorFlow.js has limited pre-trained models)
     const baseModel = tf.sequential({
       layers: [
@@ -222,7 +236,7 @@ class TensorFlowTrainer {
     return baseModel;
   }
 
-  private async createEfficientNetModel(): Promise<tf.LayersModel> {
+  private createEfficientNetModel(): tf.LayersModel {
     // Simplified EfficientNet-like architecture
     const model = tf.sequential({
       layers: [
@@ -273,7 +287,7 @@ class TensorFlowTrainer {
     return model;
   }
 
-  private createCustomLoss() {
+  private createCustomLoss(): (yTrue: tf.Tensor, yPred: tf.Tensor) => tf.Tensor {
     return (yTrue: tf.Tensor, yPred: tf.Tensor) => {
       return tf.tidy(() => {
         // Split predictions and targets
@@ -301,7 +315,7 @@ class TensorFlowTrainer {
     };
   }
 
-  async train(): Promise<void> {
+  public async train(): Promise<void> {
     if (!this.model || !this.trainDataset || !this.valDataset) {
       throw new Error('Model or datasets not initialized');
     }
@@ -319,20 +333,24 @@ class TensorFlowTrainer {
     this.model.summary();
 
     // Create callbacks
-    const self = this;
+    const getBestValLoss = (): number => this.getBestValLoss();
+    const saveModel = (epoch: number, valLoss: number): Promise<void> =>
+      this.saveModel(epoch, valLoss);
     const callbacks = [
       new (class extends tf.Callback {
-        override async onEpochEnd(epoch: number, logs?: tf.Logs) {
+        public override async onEpochEnd(epoch: number, logs?: tf.Logs): Promise<void> {
+          const loss = logs?.['loss'];
+          const valLoss = logs?.['val_loss'];
           console.log(
-            `Epoch ${epoch + 1}: loss=${logs?.['loss']?.toFixed(4)}, val_loss=${logs?.['val_loss']?.toFixed(4)}`,
+            `Epoch ${epoch + 1}: loss=${loss?.toFixed(4)}, val_loss=${valLoss?.toFixed(4)}`,
           );
 
           // Save model checkpoint
-          if (logs?.['val_loss'] && (epoch === 0 || logs['val_loss'] < self.getBestValLoss())) {
-            await self.saveModel(epoch, logs['val_loss'] as number);
+          if (valLoss !== undefined && (epoch === 0 || valLoss < getBestValLoss())) {
+            await saveModel(epoch, valLoss);
           }
         }
-        override async onTrainEnd() {
+        public override onTrainEnd(): void {
           console.log('✅ Training completed!');
         }
       })(),
@@ -375,20 +393,23 @@ class TensorFlowTrainer {
       savedAt: new Date().toISOString(),
     };
 
-    const metadataPath = path.join(path.dirname(this.config.savePath), `${path.basename(this.config.savePath)}_metadata.json`);
+    const metadataPath = path.join(
+      path.dirname(this.config.savePath),
+      `${path.basename(this.config.savePath)}_metadata.json`,
+    );
     await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
 
     console.log(`💾 Model saved: epoch ${epoch + 1}, val_loss=${valLoss.toFixed(4)}`);
   }
 
-  async loadModel(modelPath: string): Promise<void> {
+  public async loadModel(modelPath: string): Promise<void> {
     console.log(`📂 Loading model from: ${modelPath}`);
     this.model = await tf.loadLayersModel(`file://${path.resolve(modelPath)}`);
     console.log('✅ Model loaded successfully');
   }
 
   // Inference method
-  async predict(imagePath: string): Promise<{
+  public async predict(imagePath: string): Promise<{
     movement: { x: number; y: number };
     aim: { x: number; y: number };
     shooting: number;
@@ -428,7 +449,7 @@ class TensorFlowTrainer {
     };
   }
 
-  dispose(): void {
+  public dispose(): void {
     if (this.model) {
       this.model.dispose();
     }
@@ -436,7 +457,7 @@ class TensorFlowTrainer {
 }
 
 // CLI interface
-async function main() {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.length < 1) {
@@ -471,7 +492,7 @@ async function main() {
   for (let i = 1; i < args.length; i++) {
     switch (args[i]) {
       case '--model':
-        config.modelType = args[++i] as any;
+        config.modelType = args[++i] as 'efficientnet' | 'mobilenet' | 'custom_cnn';
         break;
       case '--epochs':
         config.epochs = parseInt(args[++i] || '');
@@ -514,5 +535,5 @@ async function main() {
 export { TensorFlowTrainer, TrainingConfig };
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  void main();
 }

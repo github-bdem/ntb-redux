@@ -1,8 +1,9 @@
-import { spawn, ChildProcess } from 'child_process';
-import { InputEvent } from './input-capture.js';
+import type { ChildProcess } from 'child_process';
+import { spawn } from 'child_process';
+import type { InputEvent } from './input-capture.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { WindowGeometry } from './screenshot-capture.js';
+import type { WindowGeometry } from './screenshot-capture.js';
 
 const execAsync = promisify(exec);
 
@@ -16,12 +17,14 @@ export class XInputCapture {
   private lastMouseX = 0;
   private lastMouseY = 0;
 
-  setWindowGeometry(geometry: WindowGeometry): void {
+  public setWindowGeometry(geometry: WindowGeometry): void {
     this.windowGeometry = geometry;
-    console.log(`Window geometry set: ${geometry.width}x${geometry.height} at (${geometry.x}, ${geometry.y})`);
+    console.log(
+      `Window geometry set: ${geometry.width}x${geometry.height} at (${geometry.x}, ${geometry.y})`,
+    );
   }
 
-  async startCapturing(): Promise<void> {
+  public async startCapturing(): Promise<void> {
     this.isCapturing = true;
     this.events = [];
 
@@ -79,12 +82,12 @@ export class XInputCapture {
     try {
       const process = spawn('xinput', ['test', deviceId]);
 
-      process.stdout?.on('data', (data) => {
+      process.stdout?.on('data', (data: Buffer) => {
         if (!this.isCapturing) return;
         this.parseXInputOutput(data.toString());
       });
 
-      process.stderr?.on('data', (data) => {
+      process.stderr?.on('data', (data: Buffer) => {
         console.error(`xinput error for device ${deviceId}:`, data.toString().trim());
       });
 
@@ -154,11 +157,12 @@ export class XInputCapture {
         if (motionMatch && motionMatch[1] && motionMatch[2]) {
           const absoluteX = parseInt(motionMatch[1]);
           const absoluteY = parseInt(motionMatch[2]);
-          
+
           // Store absolute position for button events
           this.lastMouseX = absoluteX;
           this.lastMouseY = absoluteY;
-          
+
+          // TODO: double check this conversion
           // Convert to window coordinates
           const { x, y } = this.convertToWindowCoordinates(absoluteX, absoluteY);
 
@@ -172,7 +176,9 @@ export class XInputCapture {
 
           // Log less frequently for mouse movement to avoid spam
           if (Math.random() < 0.05) {
-            console.log(`Mouse motion: window coords (${x}, ${y}) from absolute (${absoluteX}, ${absoluteY})`);
+            console.log(
+              `Mouse motion: window coords (${x}, ${y}) from absolute (${absoluteX}, ${absoluteY})`,
+            );
           }
         }
       }
@@ -259,7 +265,10 @@ export class XInputCapture {
     return keyMap[keyCode] || `key_${keyCode}`;
   }
 
-  private convertToWindowCoordinates(absoluteX: number, absoluteY: number): { x: number; y: number } {
+  private convertToWindowCoordinates(
+    absoluteX: number,
+    absoluteY: number,
+  ): { x: number; y: number } {
     if (!this.windowGeometry) {
       // If no window geometry is set, return absolute coordinates
       return { x: absoluteX, y: absoluteY };
@@ -290,7 +299,7 @@ export class XInputCapture {
     }
   }
 
-  stopCapturing(): InputEvent[] {
+  public stopCapturing(): InputEvent[] {
     this.isCapturing = false;
 
     // Kill all processes
@@ -305,7 +314,7 @@ export class XInputCapture {
     return [...this.events];
   }
 
-  getNewEvents(): InputEvent[] {
+  public getNewEvents(): InputEvent[] {
     const newEvents = [...this.events];
     this.events = [];
     return newEvents;

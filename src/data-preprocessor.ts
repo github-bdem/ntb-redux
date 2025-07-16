@@ -109,8 +109,14 @@ export class GameDataPreprocessor {
   }
 
   // Process a single training session
-  async processTrainingSession(metadataPath: string): Promise<ProcessedGameState[]> {
-    const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8'));
+  public async processTrainingSession(metadataPath: string): Promise<ProcessedGameState[]> {
+    const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8')) as {
+      dataPoints: Array<{
+        timestamp: number;
+        screenshotFile: string;
+        inputEvents: InputEvent[];
+      }>;
+    };
     const processed: ProcessedGameState[] = [];
 
     for (const dataPoint of metadata.dataPoints) {
@@ -134,10 +140,13 @@ export class GameDataPreprocessor {
   }
 
   // Create training data for different ML approaches
-  async createTrainingData(
+  public createTrainingData(
     processedData: ProcessedGameState[],
     approach: 'classification' | 'regression' | 'sequence',
-  ) {
+  ):
+    | ReturnType<typeof this.createClassificationData>
+    | ReturnType<typeof this.createRegressionData>
+    | ReturnType<typeof this.createSequenceData> {
     switch (approach) {
       case 'classification':
         return this.createClassificationData(processedData);
@@ -148,7 +157,11 @@ export class GameDataPreprocessor {
     }
   }
 
-  private createClassificationData(data: ProcessedGameState[]) {
+  private createClassificationData(data: ProcessedGameState[]): {
+    format: string;
+    classes: string[];
+    samples: Array<{ screenshot: string; actionClass: string; timestamp: number }>;
+  } {
     // Convert to discrete action classes
     const samples = data.map((point) => ({
       screenshot: point.screenshotPath,
@@ -163,7 +176,21 @@ export class GameDataPreprocessor {
     };
   }
 
-  private createRegressionData(data: ProcessedGameState[]) {
+  private createRegressionData(data: ProcessedGameState[]): {
+    format: string;
+    outputDimensions: string[];
+    samples: Array<{
+      screenshot: string;
+      outputs: {
+        movement_x: number;
+        movement_y: number;
+        aim_x: number;
+        aim_y: number;
+        shooting: number;
+      };
+      timestamp: number;
+    }>;
+  } {
     // Convert to continuous values
     const samples = data.map((point) => ({
       screenshot: point.screenshotPath,
@@ -184,7 +211,19 @@ export class GameDataPreprocessor {
     };
   }
 
-  private createSequenceData(data: ProcessedGameState[], sequenceLength: number = 5) {
+  private createSequenceData(
+    data: ProcessedGameState[],
+    sequenceLength: number = 5,
+  ): {
+    format: string;
+    sequenceLength: number;
+    sequences: Array<{
+      input_sequence: Array<{ screenshot: string; actions: ProcessedGameState['actions'] }>;
+      target_action: ProcessedGameState['actions'];
+      sequence_start: number;
+      target_timestamp: number;
+    }>;
+  } {
     // Create sequences for RNN/LSTM training
     const sequences = [];
 
@@ -253,11 +292,14 @@ export class GameDataPreprocessor {
   }
 
   // Export for different ML frameworks
-  async exportForFramework(
-    data: any,
+  public async exportForFramework(
+    data:
+      | ReturnType<typeof this.createClassificationData>
+      | ReturnType<typeof this.createRegressionData>
+      | ReturnType<typeof this.createSequenceData>,
     framework: 'tensorflow' | 'sklearn',
     outputDir: string,
-  ) {
+  ): Promise<void> {
     await fs.mkdir(outputDir, { recursive: true });
 
     switch (framework) {
@@ -270,12 +312,17 @@ export class GameDataPreprocessor {
     }
   }
 
-
-  private async exportTensorFlow(data: any, outputDir: string) {
+  private async exportTensorFlow(
+    data:
+      | ReturnType<typeof this.createClassificationData>
+      | ReturnType<typeof this.createRegressionData>
+      | ReturnType<typeof this.createSequenceData>,
+    outputDir: string,
+  ): Promise<void> {
     // Create TensorFlow dataset structure
     const tfData = {
       format: 'tensorflow',
-      samples: data.samples || data.sequences,
+      samples: 'samples' in data ? data.samples : data.sequences,
       metadata: {
         image_shape: [240, 320, 3],
         output_shape: data.format === 'regression' ? [5] : [1],
@@ -285,12 +332,18 @@ export class GameDataPreprocessor {
     await fs.writeFile(join(outputDir, 'tf_dataset.json'), JSON.stringify(tfData, null, 2));
   }
 
-  private async exportSklearn(data: any, outputDir: string) {
+  private async exportSklearn(
+    data:
+      | ReturnType<typeof this.createClassificationData>
+      | ReturnType<typeof this.createRegressionData>
+      | ReturnType<typeof this.createSequenceData>,
+    outputDir: string,
+  ): Promise<void> {
     // For sklearn, we'd need to extract image features first
     const sklearnData = {
       format: 'sklearn',
       note: 'Images need to be converted to feature vectors',
-      samples: data.samples,
+      samples: 'samples' in data ? data.samples : undefined,
       suggested_features: ['image_histogram', 'edge_features', 'corner_detection', 'hog_features'],
     };
 
@@ -299,7 +352,15 @@ export class GameDataPreprocessor {
 }
 
 // Usage example
-export async function processGameData(sessionDir: string, outputDir: string) {
+export async function processGameData(
+  sessionDir: string,
+  outputDir: string,
+): Promise<{
+  processed: ProcessedGameState[];
+  classification: ReturnType<GameDataPreprocessor['createTrainingData']>;
+  regression: ReturnType<GameDataPreprocessor['createTrainingData']>;
+  sequence: ReturnType<GameDataPreprocessor['createTrainingData']>;
+}> {
   const preprocessor = new GameDataPreprocessor();
 
   // Process the raw training data
@@ -307,12 +368,16 @@ export async function processGameData(sessionDir: string, outputDir: string) {
   const processedData = await preprocessor.processTrainingSession(metadataPath);
 
   // Create different formats for different approaches
-  const classificationData = await preprocessor.createTrainingData(processedData, 'classification');
-  const regressionData = await preprocessor.createTrainingData(processedData, 'regression');
-  const sequenceData = await preprocessor.createTrainingData(processedData, 'sequence');
+  const classificationData = preprocessor.createTrainingData(processedData, 'classification');
+  const regressionData = preprocessor.createTrainingData(processedData, 'regression');
+  const sequenceData = preprocessor.createTrainingData(processedData, 'sequence');
 
   // Export for TensorFlow.js
-  await preprocessor.exportForFramework(regressionData, 'tensorflow', join(outputDir, 'tensorflow'));
+  await preprocessor.exportForFramework(
+    regressionData,
+    'tensorflow',
+    join(outputDir, 'tensorflow'),
+  );
 
   console.log(`Processed ${processedData.length} frames`);
 

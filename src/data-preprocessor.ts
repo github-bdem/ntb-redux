@@ -255,15 +255,12 @@ export class GameDataPreprocessor {
   // Export for different ML frameworks
   async exportForFramework(
     data: any,
-    framework: 'pytorch' | 'tensorflow' | 'sklearn',
+    framework: 'tensorflow' | 'sklearn',
     outputDir: string,
   ) {
     await fs.mkdir(outputDir, { recursive: true });
 
     switch (framework) {
-      case 'pytorch':
-        await this.exportPyTorch(data, outputDir);
-        break;
       case 'tensorflow':
         await this.exportTensorFlow(data, outputDir);
         break;
@@ -273,56 +270,6 @@ export class GameDataPreprocessor {
     }
   }
 
-  private async exportPyTorch(data: any, outputDir: string) {
-    // Create PyTorch-compatible dataset structure
-    const dataset = {
-      format: 'pytorch',
-      image_dir: 'screenshots',
-      annotations: data.samples || data.sequences,
-      metadata: {
-        image_size: [240, 320], // height, width for Nuclear Throne
-        channels: 3,
-        data_type: data.format,
-      },
-    };
-
-    await fs.writeFile(join(outputDir, 'dataset.json'), JSON.stringify(dataset, null, 2));
-
-    // Create dataset loading script
-    const datasetScript = `
-import torch
-from torch.utils.data import Dataset
-from PIL import Image
-import json
-import os
-
-class GameDataset(Dataset):
-    def __init__(self, json_path, transform=None):
-        with open(json_path, 'r') as f:
-            self.data = json.load(f)
-        self.transform = transform
-        
-    def __len__(self):
-        return len(self.data['annotations'])
-    
-    def __getitem__(self, idx):
-        sample = self.data['annotations'][idx]
-        image = Image.open(sample['screenshot'])
-        
-        if self.transform:
-            image = self.transform(image)
-            
-        # Convert action to tensor based on format
-        if self.data['metadata']['data_type'] == 'classification':
-            target = sample['actionClass']
-        elif self.data['metadata']['data_type'] == 'regression':
-            target = torch.tensor(list(sample['outputs'].values()), dtype=torch.float32)
-        
-        return image, target
-`;
-
-    await fs.writeFile(join(outputDir, 'dataset.py'), datasetScript);
-  }
 
   private async exportTensorFlow(data: any, outputDir: string) {
     // Create TensorFlow dataset structure
@@ -364,8 +311,8 @@ export async function processGameData(sessionDir: string, outputDir: string) {
   const regressionData = await preprocessor.createTrainingData(processedData, 'regression');
   const sequenceData = await preprocessor.createTrainingData(processedData, 'sequence');
 
-  // Export for PyTorch (recommended for your use case)
-  await preprocessor.exportForFramework(regressionData, 'pytorch', join(outputDir, 'pytorch'));
+  // Export for TensorFlow.js
+  await preprocessor.exportForFramework(regressionData, 'tensorflow', join(outputDir, 'tensorflow'));
 
   console.log(`Processed ${processedData.length} frames`);
 

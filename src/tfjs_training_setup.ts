@@ -65,10 +65,8 @@ class TensorFlowTrainer {
     const baseDir = this.config.dataDir;
 
     // Load training data
-    const trainData = await this.loadDatasetFile(join(baseDir, 'pytorch', 'train_regression.json'));
-    const valData = await this.loadDatasetFile(
-      join(baseDir, 'pytorch', 'validation_regression.json'),
-    );
+    const trainData = await this.loadDatasetFile(join(baseDir, 'train_data.json'));
+    const valData = await this.loadDatasetFile(join(baseDir, 'val_data.json'));
 
     console.log(`  Training samples: ${trainData.samples.length}`);
     console.log(`  Validation samples: ${valData.samples.length}`);
@@ -360,6 +358,10 @@ class TensorFlowTrainer {
     if (!this.model) return;
 
     this.bestValLoss = valLoss;
+
+    // Ensure the directory exists
+    const modelDir = path.dirname(path.resolve(this.config.savePath));
+    await fs.mkdir(modelDir, { recursive: true });
 
     // Save model
     const modelPath = `file://${path.resolve(this.config.savePath)}`;

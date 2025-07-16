@@ -44,3 +44,5 @@ npx tsx ./src/tfjs\_-_training_setup.ts ./cleaned_data --model custom_cnn --epoc
 # Or for a more thorough training run
 
 npx tsx ./src/tfjs-training-setup.ts ./cleaned_data --model custom_cnn --epochs 50 --batch-size 8 --learning-rate 0.001
+
+npm run train ./cleaned_data --model custom_cnn --epochs 10

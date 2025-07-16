@@ -1,640 +1,379 @@
 #!/usr/bin/env ts-node
 
-import * as tf from '@tensorflow/tfjs-node-gpu'; // For GPU support
-// Alternative: import * as tf from '@tensorflow/tfjs-node'; // CPU only
 import { promises as fs } from 'fs';
-import { join } from 'path';
-import * as path from 'path';
+import { join, basename } from 'path';
 import { fileURLToPath } from 'url';
 
-interface TrainingConfig {
-  dataDir: string;
-  modelType: 'efficientnet' | 'mobilenet' | 'custom_cnn';
-  epochs: number;
-  batchSize: number;
-  learningRate: number;
+interface CleaningConfig {
+  inputDir: string;
+  outputDir: string;
   validationSplit: number;
-  savePath: string;
-  resumeFrom?: string;
+  testSplit: number;
+  minInputEvents: number;
+  maxMouseJump: number;
 }
 
-interface DatasetSample {
-  screenshot: string;
-  outputs: {
-    movement_x: number;
-    movement_y: number;
-    aim_x: number;
-    aim_y: number;
-    shooting: number;
-  };
-  timestamp: number;
+interface TrainingSession {
+  dir: string;
+  metadata: any;
+  dataFile: string;
 }
 
-class TensorFlowTrainer {
-  private config: TrainingConfig;
-  private model: tf.LayersModel | null = null;
-  private trainDataset: tf.data.Dataset<{ xs: tf.Tensor; ys: tf.Tensor }> | null = null;
-  private valDataset: tf.data.Dataset<{ xs: tf.Tensor; ys: tf.Tensor }> | null = null;
-
-  constructor(config: TrainingConfig) {
+class TrainingDataCleaner {
+  private config: CleaningConfig;
+  
+  constructor(config: CleaningConfig) {
     this.config = config;
   }
-
-  async initialize(): Promise<void> {
-    console.log('🔧 Initializing TensorFlow.js training...');
-
-    // Configure for optimal performance
-    if (tf.getBackend() === 'tensorflow') {
-      // For ROCm/GPU backend
-      tf.env().set('WEBGL_DELETE_TEXTURE_THRESHOLD', 0);
-      tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
-      tf.env().set('WEBGL_PACK', true);
-
-      // Set memory growth for GPU
-      try {
-        const gpuMemoryInfo = tf.memory();
-        console.log(`💾 Initial GPU memory: ${JSON.stringify(gpuMemoryInfo)}`);
-      } catch (e) {
-        console.log('⚠️  GPU memory info not available');
-      }
+  
+  async clean(): Promise<void> {
+    console.log('🧹 Starting training data cleaning process...');
+    console.log(`Input directory: ${this.config.inputDir}`);
+    console.log(`Output directory: ${this.config.outputDir}`);
+    
+    // Find all training sessions
+    const sessions = await this.findTrainingSessions();
+    console.log(`Found ${sessions.length} training sessions\n`);
+    
+    // Create output directory structure
+    await this.createOutputDirectories();
+    
+    // Process each session
+    let totalFrames = 0;
+    let validFrames = 0;
+    
+    for (const session of sessions) {
+      console.log(`📁 Processing session: ${basename(session.dir)}`);
+      
+      const { rawData, filteredData } = await this.processSession(session);
+      totalFrames += rawData.length;
+      validFrames += filteredData.length;
+      
+      console.log(`  Raw frames: ${rawData.length}`);
+      console.log(`  Valid frames: ${filteredData.length}`);
+      console.log(`  Filtered out: ${rawData.length - filteredData.length}\n`);
     }
-
-    console.log(`🖥️  Backend: ${tf.getBackend()}`);
-    console.log(`📊 TensorFlow.js version: ${tf.version.tfjs}`);
-
-    // Verify we can create tensors
+    
+    console.log('📊 Overall Statistics:');
+    console.log(`  Total frames processed: ${totalFrames}`);
+    console.log(`  Valid frames kept: ${validFrames}`);
+    console.log(`  Filter rate: ${((1 - validFrames/totalFrames) * 100).toFixed(1)}%\n`);
+    
+    // Split data into train/val/test sets
+    const allData = await this.loadAllProcessedData();
+    const splits = this.splitData(allData);
+    
+    console.log('📂 Data splits:');
+    console.log(`  Training: ${splits.train.length} frames`);
+    console.log(`  Validation: ${splits.val.length} frames`);
+    console.log(`  Test: ${splits.test.length} frames\n`);
+    
+    // Export data in TensorFlow.js format
+    await this.exportForTensorFlow(splits);
+    
+    console.log('✅ Training data cleaning completed successfully!');
+  }
+  
+  private async findTrainingSessions(): Promise<TrainingSession[]> {
+    const sessions: TrainingSession[] = [];
+    
     try {
-      const testTensor = tf.zeros([1, 3, 240, 320]);
-      console.log(`✅ Test tensor created: ${testTensor.shape}`);
-      testTensor.dispose();
-    } catch (error) {
-      throw new Error(`Failed to create test tensor: ${error}`);
-    }
-
-    // Load datasets
-    await this.loadDatasets();
-
-    // Create model
-    this.model = await this.createModel();
-
-    console.log('✅ Initialization complete');
-    console.log(`📈 Model parameters: ${this.model.countParams()}`);
-  }
-
-  private async loadDatasets(): Promise<void> {
-    console.log('📁 Loading datasets...');
-
-    await this.loadDatasetInfo(); // Load to verify it exists
-    const baseDir = this.config.dataDir;
-
-    // Load training data
-    const trainData = await this.loadDatasetFile(join(baseDir, 'pytorch', 'train_regression.json'));
-    const valData = await this.loadDatasetFile(
-      join(baseDir, 'pytorch', 'validation_regression.json'),
-    );
-
-    console.log(`  Training samples: ${trainData.samples.length}`);
-    console.log(`  Validation samples: ${valData.samples.length}`);
-
-    // Create TensorFlow datasets
-    this.trainDataset = this.createTFDataset(trainData.samples, baseDir, true) as any;
-    this.valDataset = this.createTFDataset(valData.samples, baseDir, false) as any;
-  }
-
-  private async loadDatasetInfo(): Promise<any> {
-    const infoPath = join(this.config.dataDir, 'dataset_info.json');
-    const content = await fs.readFile(infoPath, 'utf8');
-    return JSON.parse(content);
-  }
-
-  private async loadDatasetFile(filePath: string): Promise<any> {
-    const content = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(content);
-  }
-
-  private createTFDataset(
-    samples: DatasetSample[],
-    baseDir: string,
-    isTraining: boolean,
-  ) {
-    console.log(
-      `📊 Creating ${isTraining ? 'training' : 'validation'} dataset with ${samples.length} samples`,
-    );
-
-    // Create dataset from generator
-    const dataset = tf.data.generator(async function* () {
-      let successCount = 0;
-      let errorCount = 0;
-
-      for (let i = 0; i < samples.length; i++) {
-        const sample = samples[i];
-
-        try {
-          // Load and preprocess image
-          const imagePath = path.isAbsolute(sample?.screenshot || '')
-            ? sample?.screenshot
-            : path.join(baseDir, sample?.screenshot || '');
-
-          // Check if file exists
+      const entries = await fs.readdir(this.config.inputDir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name.startsWith('session_')) {
+          const sessionDir = join(this.config.inputDir, entry.name);
+          const metadataPath = join(sessionDir, 'collection_metadata.json');
+          
           try {
-            await fs.access(imagePath || '');
-          } catch {
-            console.warn(`⚠️  Image not found: ${imagePath}`);
-            errorCount++;
-            continue;
+            const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8'));
+            
+            sessions.push({
+              dir: sessionDir,
+              metadata: metadata.collectionInfo,
+              dataFile: metadataPath  // The data is in the metadata file
+            });
+          } catch (error) {
+            console.log(`  ⚠️  Skipping ${entry.name}: ${error instanceof Error ? error.message : 'unknown error'}`);
           }
-
-          const imageBuffer = await fs.readFile(imagePath || '');
-
-          // Decode image using TensorFlow.js
-          let imageTensor: tf.Tensor3D;
-          try {
-            imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
-          } catch (decodeError) {
-            console.warn(
-              `⚠️  Failed to decode image ${path.basename(imagePath || '')}: ${decodeError}`,
-            );
-            errorCount++;
-            continue;
-          }
-
-          // Resize to model input size (240x320)
-          const resized = tf.image.resizeBilinear(imageTensor, [240, 320]);
-          imageTensor.dispose();
-
-          // Normalize to [0, 1] and apply augmentation if training
-          let processed = tf.div(resized, 255.0);
-          resized.dispose();
-
-          if (isTraining) {
-            // Simple data augmentation
-            const shouldFlip = Math.random() < 0.05; // 5% chance
-            if (shouldFlip) {
-              const flipped = tf.image.flipLeftRight(processed as tf.Tensor4D);
-              processed.dispose();
-              processed = flipped;
-            }
-
-            // Slight brightness adjustment
-            const brightnessAdjust = (Math.random() - 0.5) * 0.1; // ±5%
-            if (Math.abs(brightnessAdjust) > 0.01) {
-              const brightened = tf.add(processed, brightnessAdjust);
-              processed.dispose();
-              processed = brightened;
-            }
-          }
-
-          // Create target tensor with default values for undefined
-          const target = tf.tensor1d([
-            sample?.outputs.movement_x ?? 0,
-            sample?.outputs.movement_y ?? 0,
-            sample?.outputs.aim_x ?? 0,
-            sample?.outputs.aim_y ?? 0,
-            sample?.outputs.shooting ?? 0,
-          ]);
-
-          successCount++;
-
-          // Progress logging
-          if (successCount % 50 === 0) {
-            console.log(
-              `  📸 Processed ${successCount}/${samples.length} images (${errorCount} errors)`,
-            );
-          }
-
-          yield { xs: processed, ys: target };
-        } catch (error) {
-          console.warn(`⚠️  Error processing sample ${i}: ${error}`);
-          errorCount++;
-          continue;
         }
       }
-
-      console.log(`✅ Dataset creation complete: ${successCount} successful, ${errorCount} errors`);
-    });
-
-    // Apply batching and shuffling
-    let processedDataset = dataset;
-
-    if (isTraining) {
-      processedDataset = processedDataset.shuffle(1000);
+    } catch (error) {
+      console.error('Error reading input directory:', error);
     }
-
-    return processedDataset.batch(this.config.batchSize);
+    
+    return sessions;
   }
-
-  private async createModel(): Promise<tf.LayersModel> {
-    console.log(`🤖 Creating ${this.config.modelType} model...`);
-
-    switch (this.config.modelType) {
-      case 'custom_cnn':
-        return this.createCustomCNN();
-      case 'mobilenet':
-        return await this.createMobileNetModel();
-      case 'efficientnet':
-        return await this.createEfficientNetModel();
-      default:
-        throw new Error(`Unknown model type: ${this.config.modelType}`);
-    }
-  }
-
-  private createCustomCNN(): tf.LayersModel {
-    console.log('🧠 Creating custom CNN optimized for Nuclear Throne...');
-
-    const model = tf.sequential({
-      layers: [
-        // Input layer - Nuclear Throne resolution
-        tf.layers.conv2d({
-          inputShape: [240, 320, 3],
-          filters: 32,
-          kernelSize: 3,
-          activation: 'relu',
-          padding: 'same',
-          name: 'conv1',
-        }),
-        tf.layers.batchNormalization({ name: 'bn1' }),
-        tf.layers.maxPooling2d({ poolSize: 2, name: 'pool1' }), // 120x160
-
-        // Feature extraction layers
-        tf.layers.conv2d({
-          filters: 64,
-          kernelSize: 3,
-          activation: 'relu',
-          padding: 'same',
-          name: 'conv2',
-        }),
-        tf.layers.batchNormalization({ name: 'bn2' }),
-        tf.layers.maxPooling2d({ poolSize: 2, name: 'pool2' }), // 60x80
-
-        tf.layers.conv2d({
-          filters: 128,
-          kernelSize: 3,
-          activation: 'relu',
-          padding: 'same',
-          name: 'conv3',
-        }),
-        tf.layers.batchNormalization({ name: 'bn3' }),
-        tf.layers.maxPooling2d({ poolSize: 2, name: 'pool3' }), // 30x40
-
-        tf.layers.conv2d({
-          filters: 256,
-          kernelSize: 3,
-          activation: 'relu',
-          padding: 'same',
-          name: 'conv4',
-        }),
-        tf.layers.batchNormalization({ name: 'bn4' }),
-        tf.layers.globalAveragePooling2d({ name: 'gap' }),
-
-        // Decision layers
-        tf.layers.dropout({ rate: 0.3, name: 'dropout1' }),
-        tf.layers.dense({
-          units: 256,
-          activation: 'relu',
-          kernelRegularizer: tf.regularizers.l2({ l2: 1e-4 }),
-          name: 'dense1',
-        }),
-        tf.layers.dropout({ rate: 0.2, name: 'dropout2' }),
-        tf.layers.dense({
-          units: 64,
-          activation: 'relu',
-          name: 'dense2',
-        }),
-
-        // Output layer - 5 outputs for game actions
-        tf.layers.dense({
-          units: 5,
-          activation: 'linear',
-          name: 'output',
-        }),
-      ],
-    });
-
-    return model;
-  }
-
-  private async createMobileNetModel(): Promise<tf.LayersModel> {
-    // Load MobileNet base (this is a simplified version - TensorFlow.js has limited pre-trained models)
-    const baseModel = tf.sequential({
-      layers: [
-        tf.layers.conv2d({
-          inputShape: [240, 320, 3],
-          filters: 32,
-          kernelSize: 3,
-          strides: 2,
-          activation: 'relu',
-          padding: 'same',
-        }),
-        tf.layers.depthwiseConv2d({ kernelSize: 3, activation: 'relu', padding: 'same' }),
-        tf.layers.conv2d({ filters: 64, kernelSize: 1, activation: 'relu' }),
-        tf.layers.maxPooling2d({ poolSize: 2 }),
-
-        tf.layers.depthwiseConv2d({ kernelSize: 3, activation: 'relu', padding: 'same' }),
-        tf.layers.conv2d({ filters: 128, kernelSize: 1, activation: 'relu' }),
-        tf.layers.maxPooling2d({ poolSize: 2 }),
-
-        tf.layers.depthwiseConv2d({ kernelSize: 3, activation: 'relu', padding: 'same' }),
-        tf.layers.conv2d({ filters: 256, kernelSize: 1, activation: 'relu' }),
-        tf.layers.globalAveragePooling2d({ dataFormat: 'channelsLast' }),
-
-        // Custom head
-        tf.layers.dropout({ rate: 0.2 }),
-        tf.layers.dense({ units: 128, activation: 'relu' }),
-        tf.layers.dense({ units: 5, activation: 'linear' }),
-      ],
-    });
-
-    return baseModel;
-  }
-
-  private async createEfficientNetModel(): Promise<tf.LayersModel> {
-    // Simplified EfficientNet-like architecture
-    const model = tf.sequential({
-      layers: [
-        // Stem
-        tf.layers.conv2d({
-          inputShape: [240, 320, 3],
-          filters: 32,
-          kernelSize: 3,
-          strides: 2,
-          activation: 'swish',
-          padding: 'same',
-        }),
-
-        // Mobile inverted bottleneck blocks (simplified)
-        tf.layers.separableConv2d({
-          filters: 64,
-          kernelSize: 3,
-          activation: 'swish',
-          padding: 'same',
-        }),
-        tf.layers.maxPooling2d({ poolSize: 2 }),
-
-        tf.layers.separableConv2d({
-          filters: 128,
-          kernelSize: 3,
-          activation: 'swish',
-          padding: 'same',
-        }),
-        tf.layers.maxPooling2d({ poolSize: 2 }),
-
-        tf.layers.separableConv2d({
-          filters: 256,
-          kernelSize: 3,
-          activation: 'swish',
-          padding: 'same',
-        }),
-        tf.layers.globalAveragePooling2d({ dataFormat: 'channelsLast' }),
-
-        // Head
-        tf.layers.dropout({ rate: 0.2 }),
-        tf.layers.dense({ units: 256, activation: 'swish' }),
-        tf.layers.dropout({ rate: 0.2 }),
-        tf.layers.dense({ units: 64, activation: 'swish' }),
-        tf.layers.dense({ units: 5, activation: 'linear' }),
-      ],
-    });
-
-    return model;
-  }
-
-  private createCustomLoss() {
-    return (yTrue: tf.Tensor, yPred: tf.Tensor) => {
-      return tf.tidy(() => {
-        // Split predictions and targets
-        const predMovement = tf.slice(yPred, [0, 0], [-1, 2]);
-        const predAim = tf.slice(yPred, [0, 2], [-1, 2]);
-        const predShoot = tf.slice(yPred, [0, 4], [-1, 1]);
-
-        const trueMovement = tf.slice(yTrue, [0, 0], [-1, 2]);
-        const trueAim = tf.slice(yTrue, [0, 2], [-1, 2]);
-        const trueShoot = tf.slice(yTrue, [0, 4], [-1, 1]);
-
-        // Different loss components
-        const movementLoss = tf.losses.meanSquaredError(trueMovement, predMovement);
-        const aimLoss = tf.losses.meanSquaredError(trueAim, predAim);
-        const shootLoss = tf.losses.sigmoidCrossEntropy(trueShoot, predShoot);
-
-        // Weighted combination
-        const totalLoss = tf.add(
-          tf.add(tf.mul(movementLoss, 2.0), tf.mul(aimLoss, 1.5)),
-          tf.mul(shootLoss, 1.0),
-        );
-
-        return totalLoss;
-      });
-    };
-  }
-
-  async train(): Promise<void> {
-    if (!this.model || !this.trainDataset || !this.valDataset) {
-      throw new Error('Model or datasets not initialized');
-    }
-
-    console.log('🚀 Starting training...');
-
-    // Compile model
-    this.model.compile({
-      optimizer: tf.train.adam(this.config.learningRate),
-      loss: this.createCustomLoss(),
-      metrics: ['mse'],
-    });
-
-    // Print model summary
-    this.model.summary();
-
-    // Create callbacks
-    const self = this;
-    const callbacks = [
-      new (class extends tf.Callback {
-        override async onEpochEnd(epoch: number, logs?: tf.Logs) {
-          console.log(
-            `Epoch ${epoch + 1}: loss=${logs?.['loss']?.toFixed(4)}, val_loss=${logs?.['val_loss']?.toFixed(4)}`,
-          );
-
-          // Save model checkpoint
-          if (logs?.['val_loss'] && (epoch === 0 || logs['val_loss'] < self.getBestValLoss())) {
-            await self.saveModel(epoch, logs['val_loss'] as number);
-          }
-        }
-        override async onTrainEnd() {
-          console.log('✅ Training completed!');
-        }
-      })(),
+  
+  private async createOutputDirectories(): Promise<void> {
+    const dirs = [
+      this.config.outputDir,
+      join(this.config.outputDir, 'screenshots'),
+      join(this.config.outputDir, 'train'),
+      join(this.config.outputDir, 'validation'),
+      join(this.config.outputDir, 'test')
     ];
-
-    // Train the model
-    const history = await this.model.fitDataset(this.trainDataset, {
-      epochs: this.config.epochs,
-      validationData: this.valDataset,
-      callbacks,
-    });
-
-    console.log('📊 Training history:', history.history);
+    
+    for (const dir of dirs) {
+      await fs.mkdir(dir, { recursive: true });
+    }
   }
-
-  private bestValLoss = Infinity;
-
-  private getBestValLoss(): number {
-    return this.bestValLoss;
-  }
-
-  private async saveModel(epoch: number, valLoss: number): Promise<void> {
-    if (!this.model) return;
-
-    this.bestValLoss = valLoss;
-
-    // Save model
-    const modelPath = `file://${path.resolve(this.config.savePath)}`;
-    await this.model.save(modelPath);
-
-    // Save metadata
-    const metadata = {
-      epoch,
-      valLoss,
-      config: this.config,
-      savedAt: new Date().toISOString(),
-    };
-
-    const metadataPath = this.config.savePath.replace('.json', '_metadata.json');
-    await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
-
-    console.log(`💾 Model saved: epoch ${epoch + 1}, val_loss=${valLoss.toFixed(4)}`);
-  }
-
-  async loadModel(modelPath: string): Promise<void> {
-    console.log(`📂 Loading model from: ${modelPath}`);
-    this.model = await tf.loadLayersModel(`file://${path.resolve(modelPath)}`);
-    console.log('✅ Model loaded successfully');
-  }
-
-  // Inference method
-  async predict(imagePath: string): Promise<{
-    movement: { x: number; y: number };
-    aim: { x: number; y: number };
-    shooting: number;
+  
+  private async processSession(session: TrainingSession): Promise<{
+    rawData: any[],
+    filteredData: any[]
   }> {
-    if (!this.model) {
-      throw new Error('Model not loaded');
-    }
-
-    // Load and preprocess image
-    const imageBuffer = await fs.readFile(imagePath);
-    let imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
-    imageTensor = tf.image.resizeBilinear(imageTensor, [240, 320]);
-    imageTensor = tf.div(imageTensor, 255.0);
-
-    // Add batch dimension
-    const batchedImage = tf.expandDims(imageTensor, 0);
-
-    // Predict
-    const prediction = this.model.predict(batchedImage) as tf.Tensor;
-    const predictionData = await prediction.data();
-
-    // Clean up tensors
-    imageTensor.dispose();
-    batchedImage.dispose();
-    prediction.dispose();
-
+    const fullData = JSON.parse(await fs.readFile(session.dataFile, 'utf8'));
+    const gameData = fullData.dataPoints || [];
+    
+    // Filter frames with sufficient input events
+    const filteredData = gameData.filter((frame: any) => {
+      if (!frame.inputEvents || frame.inputEvents.length < this.config.minInputEvents) {
+        return false;
+      }
+      
+      // Check for erratic mouse movements
+      const mouseEvents = frame.inputEvents.filter((e: any) => e.type === 'mousemove');
+      for (let i = 1; i < mouseEvents.length; i++) {
+        const dx = Math.abs(mouseEvents[i].x - mouseEvents[i-1].x);
+        const dy = Math.abs(mouseEvents[i].y - mouseEvents[i-1].y);
+        if (dx > this.config.maxMouseJump || dy > this.config.maxMouseJump) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+    
     return {
-      movement: {
-        x: predictionData[0] ?? 0,
-        y: predictionData[1] ?? 0,
-      },
-      aim: {
-        x: predictionData[2] ?? 0,
-        y: predictionData[3] ?? 0,
-      },
-      shooting: predictionData[4] ?? 0,
+      rawData: gameData,
+      filteredData
     };
   }
-
-  dispose(): void {
-    if (this.model) {
-      this.model.dispose();
+  
+  private async copyScreenshots(data: any[]): Promise<void> {
+    const screenshotDir = join(this.config.outputDir, 'screenshots');
+    
+    for (const frame of data) {
+      if (frame.screenshotFile) {
+        const sourcePath = frame.screenshotFile;
+        const filename = basename(sourcePath);
+        const destPath = join(screenshotDir, filename);
+        
+        try {
+          await fs.copyFile(sourcePath, destPath);
+          // Update path to relative
+          frame.screenshotPath = `screenshots/${filename}`;
+        } catch (error) {
+          console.warn(`Failed to copy screenshot: ${sourcePath}`);
+        }
+      }
     }
+  }
+  
+  private async loadAllProcessedData(): Promise<any[]> {
+    const allData: any[] = [];
+    const sessions = await this.findTrainingSessions();
+    
+    for (const session of sessions) {
+      const { filteredData } = await this.processSession(session);
+      
+      // First copy screenshots
+      await this.copyScreenshots(filteredData);
+      
+      // Add filtered data with updated screenshot paths
+      for (const frame of filteredData) {
+        allData.push(frame);
+      }
+    }
+    
+    return allData;
+  }
+  
+  private splitData(data: any[]): {
+    train: any[],
+    val: any[],
+    test: any[]
+  } {
+    const shuffled = [...data].sort(() => Math.random() - 0.5);
+    const trainSize = Math.floor(shuffled.length * (1 - this.config.validationSplit - this.config.testSplit));
+    const valSize = Math.floor(shuffled.length * this.config.validationSplit);
+    
+    return {
+      train: shuffled.slice(0, trainSize),
+      val: shuffled.slice(trainSize, trainSize + valSize),
+      test: shuffled.slice(trainSize + valSize)
+    };
+  }
+  
+  private async exportForTensorFlow(splits: {
+    train: any[],
+    val: any[],
+    test: any[]
+  }): Promise<void> {
+    console.log('🔄 Creating TensorFlow.js datasets...');
+    
+    // Save dataset info
+    const datasetInfo = {
+      format: 'tensorflow_js',
+      created: new Date().toISOString(),
+      splits: {
+        train: splits.train.length,
+        validation: splits.val.length,
+        test: splits.test.length
+      },
+      config: this.config
+    };
+    
+    await fs.writeFile(
+      join(this.config.outputDir, 'dataset_info.json'),
+      JSON.stringify(datasetInfo, null, 2)
+    );
+    
+    // Save each split
+    for (const [name, data] of Object.entries(splits)) {
+      console.log(`  Creating ${name} dataset...`);
+      
+      const dataset = {
+        samples: data.map(frame => {
+          // Process input events to extract actions
+          const actions = this.extractActionsFromEvents(frame.inputEvents || []);
+          
+          return {
+            screenshot: frame.screenshotPath,
+            outputs: {
+              movement_x: actions.movement?.x || 0,
+              movement_y: actions.movement?.y || 0,
+              aim_x: actions.mouseAim?.x || 0,
+              aim_y: actions.mouseAim?.y || 0,
+              shooting: actions.shooting ? 1 : 0
+            },
+            timestamp: frame.timestamp
+          };
+        })
+      };
+      
+      await fs.writeFile(
+        join(this.config.outputDir, `${name}_data.json`),
+        JSON.stringify(dataset, null, 2)
+      );
+    }
+  }
+  
+  private extractActionsFromEvents(events: any[]): {
+    movement: { x: number; y: number } | null;
+    shooting: boolean;
+    mouseAim: { x: number; y: number } | null;
+  } {
+    const actions = {
+      movement: null as { x: number; y: number } | null,
+      shooting: false,
+      mouseAim: null as { x: number; y: number } | null
+    };
+    
+    // Track currently pressed keys
+    const pressedKeys = new Set<string>();
+    let latestMousePos: { x: number; y: number } | null = null;
+    
+    for (const event of events) {
+      if (event.type === 'keyboard') {
+        if (event.action === 'press' && event.key) {
+          pressedKeys.add(event.key.toLowerCase());
+        } else if (event.action === 'release' && event.key) {
+          pressedKeys.delete(event.key.toLowerCase());
+        }
+      } else if (event.type === 'mouse') {
+        if (event.action === 'press') {
+          actions.shooting = true;
+        } else if (event.action === 'move' && event.x !== undefined && event.y !== undefined) {
+          latestMousePos = { x: event.x, y: event.y };
+        }
+      }
+    }
+    
+    // Convert WASD to movement vector
+    let moveX = 0, moveY = 0;
+    if (pressedKeys.has('a')) moveX -= 1;
+    if (pressedKeys.has('d')) moveX += 1;
+    if (pressedKeys.has('w')) moveY -= 1;
+    if (pressedKeys.has('s')) moveY += 1;
+    
+    if (moveX !== 0 || moveY !== 0) {
+      // Normalize diagonal movement
+      const magnitude = Math.sqrt(moveX * moveX + moveY * moveY);
+      actions.movement = {
+        x: moveX / magnitude,
+        y: moveY / magnitude
+      };
+    }
+    
+    actions.mouseAim = latestMousePos;
+    
+    return actions;
   }
 }
 
 // CLI interface
 async function main() {
   const args = process.argv.slice(2);
-
-  if (args.length < 1) {
-    console.log('Usage: ts-node tfjs-training-setup.ts <data-dir> [options]');
+  
+  if (args.length < 2) {
+    console.log('Usage: ts-node clean-training-data.ts <input-dir> <output-dir> [options]');
     console.log('');
     console.log('Options:');
-    console.log(
-      '  --model <type>          Model type: custom_cnn, mobilenet, efficientnet (default: custom_cnn)',
-    );
-    console.log('  --epochs <num>          Number of epochs (default: 50)');
-    console.log('  --batch-size <num>      Batch size (default: 16)');
-    console.log('  --learning-rate <num>   Learning rate (default: 0.001)');
-    console.log('  --save-path <path>      Model save path (default: ./model)');
-    console.log('  --resume <path>         Resume from saved model');
-    console.log('');
-    console.log('Example:');
-    console.log('  ts-node tfjs-training-setup.ts ./cleaned_data --model mobilenet --epochs 30');
+    console.log('  --val-split <num>    Validation split ratio (default: 0.2)');
+    console.log('  --test-split <num>   Test split ratio (default: 0.1)');
+    console.log('  --min-events <num>   Minimum input events per frame (default: 1)');
+    console.log('  --max-jump <num>     Maximum mouse jump in pixels (default: 200)');
     process.exit(1);
   }
-
-  const config: TrainingConfig = {
-    dataDir: args[0] || '',
-    modelType: 'custom_cnn',
-    epochs: 50,
-    batchSize: 16,
-    learningRate: 0.001,
+  
+  const config: CleaningConfig = {
+    inputDir: args[0] ?? '',
+    outputDir: args[1] ?? '',
     validationSplit: 0.2,
-    savePath: './model',
+    testSplit: 0.1,
+    minInputEvents: 1,
+    maxMouseJump: 200
   };
-
+  
   // Parse options
-  for (let i = 1; i < args.length; i++) {
+  for (let i = 2; i < args.length; i++) {
     switch (args[i]) {
-      case '--model':
-        config.modelType = args[++i] as any;
+      case '--val-split':
+        config.validationSplit = parseFloat(args[++i] ?? '0.2');
         break;
-      case '--epochs':
-        config.epochs = parseInt(args[++i] || '');
+      case '--test-split':
+        config.testSplit = parseFloat(args[++i] ?? '0.1');
         break;
-      case '--batch-size':
-        config.batchSize = parseInt(args[++i] || '');
+      case '--min-events':
+        config.minInputEvents = parseInt(args[++i] ?? '1');
         break;
-      case '--learning-rate':
-        config.learningRate = parseFloat(args[++i] || '');
-        break;
-      case '--save-path':
-        config.savePath = args[++i] || '';
-        break;
-      case '--resume':
-        config.resumeFrom = args[++i];
+      case '--max-jump':
+        config.maxMouseJump = parseInt(args[++i] ?? '200');
         break;
     }
   }
-
-  console.log('📋 Training configuration:', config);
-
+  
+  console.log('📋 Configuration:');
+  console.log(`  Validation split: ${(config.validationSplit * 100).toFixed(1)}%`);
+  console.log(`  Test split: ${(config.testSplit * 100).toFixed(1)}%`);
+  console.log(`  Training split: ${((1 - config.validationSplit - config.testSplit) * 100).toFixed(1)}%`);
+  console.log(`  Min input events: ${config.minInputEvents}`);
+  console.log(`  Max mouse jump: ${config.maxMouseJump}px`);
+  
   try {
-    const trainer = new TensorFlowTrainer(config);
-
-    if (config.resumeFrom) {
-      await trainer.loadModel(config.resumeFrom);
-    }
-
-    await trainer.initialize();
-    await trainer.train();
-
-    trainer.dispose();
+    const cleaner = new TrainingDataCleaner(config);
+    await cleaner.clean();
   } catch (error) {
-    console.error('❌ Training failed:', error);
+    console.error('❌ Error cleaning training data:', error);
     process.exit(1);
   }
 }
 
-// Export for use as module
-export { TensorFlowTrainer, TrainingConfig };
-
-// Run CLI if called directly
+// Run if called directly
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main();
 }
+
+export { TrainingDataCleaner, CleaningConfig };

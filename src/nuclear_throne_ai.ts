@@ -4,6 +4,7 @@ import { RealTimeInference, InferenceConfig, GameAction } from './realtime_infer
 import { SafeGameController, ControllerConfig } from './game_controller.js';
 import { ScreenshotCapture } from './screenshot-capture.js';
 import { promises as fs } from 'fs';
+import { spawn } from 'child_process';
 
 interface AIConfig {
   modelPath: string;
@@ -94,7 +95,6 @@ class NuclearThroneAI {
     
     // Check if xdotool is installed
     try {
-      const { spawn } = require('child_process');
       const xdotool = spawn('xdotool', ['version']);
       
       await new Promise((resolve, reject) => {
@@ -295,8 +295,8 @@ async function main() {
     console.log('  --save-session          Save session data');
     console.log('');
     console.log('Examples:');
-    console.log('  ts-node nuclear-throne-ai.ts ./model --fps 30 --debug');
-    console.log('  ts-node nuclear-throne-ai.ts ./model --no-controller --debug');
+    console.log('  ts-node nuclear-throne-ai.ts ./models/model --fps 30 --debug');
+    console.log('  ts-node nuclear-throne-ai.ts ./models/model --no-controller --debug');
     process.exit(1);
   }
 
@@ -388,6 +388,6 @@ async function main() {
 export { NuclearThroneAI, AIConfig };
 
 // Run CLI if called directly
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }

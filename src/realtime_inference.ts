@@ -335,7 +335,7 @@ async function main() {
     console.log('  --debug                 Enable debug output');
     console.log('');
     console.log('Example:');
-    console.log('  ts-node realtime-inference.ts ./model --fps 20 --debug');
+    console.log('  ts-node realtime-inference.ts ./models/model --fps 20 --debug');
     process.exit(1);
   }
 
@@ -399,6 +399,6 @@ async function main() {
 export { RealTimeInference, InferenceConfig, GameAction };
 
 // Run CLI if called directly
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }

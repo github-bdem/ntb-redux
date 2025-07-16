@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 
 import { spawn } from 'child_process';
-import { GameAction } from './realtime-inference.js';
+import type { GameAction } from './realtime-inference.js';
 
 interface ControllerConfig {
   deadZone: number; // Minimum movement to register
@@ -11,6 +11,7 @@ interface ControllerConfig {
   debugMode: boolean;
 }
 
+// TODO: Add all keys to this, we are missing q and e for nuclear throne at least
 interface KeyState {
   w: boolean;
   a: boolean;
@@ -35,7 +36,7 @@ class GameController {
     this.config = config;
   }
 
-  async initialize(): Promise<void> {
+  public async initialize(): Promise<void> {
     console.log('🎮 Initializing game controller...');
 
     // Test if we can execute input commands
@@ -53,12 +54,12 @@ class GameController {
     // Test xdotool availability
     try {
       await this.executeCommand('xdotool', ['version']);
-    } catch (error) {
+    } catch {
       throw new Error('xdotool not found. Install with: sudo apt install xdotool');
     }
   }
 
-  async executeAction(action: GameAction, gameWindowId: string): Promise<void> {
+  public async executeAction(action: GameAction, gameWindowId: string): Promise<void> {
     if (!this.isEnabled) return;
 
     try {
@@ -230,11 +231,11 @@ class GameController {
       let stdout = '';
       let stderr = '';
 
-      process.stdout?.on('data', (data) => {
+      process.stdout?.on('data', (data: Buffer) => {
         stdout += data.toString();
       });
 
-      process.stderr?.on('data', (data) => {
+      process.stderr?.on('data', (data: Buffer) => {
         stderr += data.toString();
       });
 
@@ -265,7 +266,7 @@ class GameController {
   }
 
   // Emergency stop - release all inputs
-  async emergencyStop(): Promise<void> {
+  public async emergencyStop(): Promise<void> {
     console.log('🚨 Emergency stop - releasing all inputs');
 
     await this.releaseAllMovementKeys();
@@ -277,18 +278,21 @@ class GameController {
   }
 
   // Enable/disable controller
-  setEnabled(enabled: boolean): void {
+  public setEnabled(enabled: boolean): void {
     this.isEnabled = enabled;
 
     if (!enabled) {
-      this.emergencyStop();
+      void this.emergencyStop();
     }
 
     console.log(`🎮 Controller ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   // Get current input state for debugging
-  getCurrentState(): KeyState & { mousePosition: { x: number; y: number }; enabled: boolean } {
+  public getCurrentState(): KeyState & {
+    mousePosition: { x: number; y: number };
+    enabled: boolean;
+  } {
     return {
       ...this.currentKeyState,
       mousePosition: { ...this.lastMousePosition },
@@ -299,7 +303,7 @@ class GameController {
 
 // Utility class for safe controller management
 class SafeGameController extends GameController {
-  private safetyTimer: NodeJS.Timeout | null = null;
+  private safetyTimer: ReturnType<typeof setInterval> | null = null;
   private lastActionTime = Date.now();
   private readonly MAX_INACTIVE_TIME = 5000; // 5 seconds
 
@@ -314,23 +318,23 @@ class SafeGameController extends GameController {
 
       if (timeSinceLastAction > this.MAX_INACTIVE_TIME) {
         console.log('⚠️  No actions received recently, safety stop');
-        this.emergencyStop();
+        void this.emergencyStop();
       }
     }, 1000);
   }
 
-  override async executeAction(action: GameAction, gameWindowId: string): Promise<void> {
+  public override async executeAction(action: GameAction, gameWindowId: string): Promise<void> {
     this.lastActionTime = Date.now();
     await super.executeAction(action, gameWindowId);
   }
 
-  destroy(): void {
+  public destroy(): void {
     if (this.safetyTimer) {
       clearInterval(this.safetyTimer);
       this.safetyTimer = null;
     }
 
-    this.emergencyStop();
+    void this.emergencyStop();
   }
 }
 

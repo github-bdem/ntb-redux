@@ -1,7 +1,9 @@
 #!/usr/bin/env ts-node
 
-import { RealTimeInference, InferenceConfig, GameAction } from './realtime-inference.js';
-import { SafeGameController, ControllerConfig } from './game-controller.js';
+import type { InferenceConfig, GameAction } from './realtime-inference.js';
+import { RealTimeInference } from './realtime-inference.js';
+import type { ControllerConfig } from './game-controller.js';
+import { SafeGameController } from './game-controller.js';
 import { ScreenshotCapture } from './screenshot-capture.js';
 import { promises as fs } from 'fs';
 import { spawn } from 'child_process';
@@ -61,7 +63,7 @@ class NuclearThroneAI {
     this.controller = new SafeGameController(controllerConfig);
   }
 
-  async initialize(): Promise<void> {
+  public async initialize(): Promise<void> {
     console.log('🤖 Initializing Nuclear Throne AI...');
     console.log(`📁 Model: ${this.config.modelPath}`);
     console.log(`🎯 Target FPS: ${this.config.targetFPS}`);
@@ -109,7 +111,7 @@ class NuclearThroneAI {
       });
 
       console.log('✅ xdotool found');
-    } catch (error) {
+    } catch {
       throw new Error('xdotool is required but not found. Install with: sudo apt install xdotool');
     }
   }
@@ -132,7 +134,7 @@ class NuclearThroneAI {
     console.log(`✅ Found game window: ${gameWindow.title}`);
   }
 
-  async start(): Promise<void> {
+  public async start(): Promise<void> {
     if (this.isRunning) {
       console.log('⚠️  AI already running');
       return;
@@ -155,7 +157,7 @@ class NuclearThroneAI {
 
       try {
         // Get action from inference engine
-        const action = await this.getNextAction();
+        const action = this.getNextAction();
 
         // Execute action if controller is enabled
         if (this.config.enableController && action) {
@@ -193,7 +195,7 @@ class NuclearThroneAI {
     console.log('🛑 Nuclear Throne AI stopped');
   }
 
-  private async getNextAction(): Promise<GameAction | null> {
+  private getNextAction(): GameAction | null {
     // This is a simplified version - in the full implementation,
     // we'd integrate more closely with the inference engine
 
@@ -215,7 +217,7 @@ class NuclearThroneAI {
     };
   }
 
-  async stop(): Promise<void> {
+  public async stop(): Promise<void> {
     if (!this.isRunning) return;
 
     console.log('🛑 Stopping Nuclear Throne AI...');
@@ -235,7 +237,7 @@ class NuclearThroneAI {
     this.logSessionSummary();
   }
 
-  async emergencyStop(): Promise<void> {
+  public async emergencyStop(): Promise<void> {
     console.log('🚨 EMERGENCY STOP');
     await this.controller.emergencyStop();
     this.isRunning = false;
@@ -277,7 +279,7 @@ class NuclearThroneAI {
 }
 
 // CLI interface
-async function main() {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.length < 1) {
@@ -365,17 +367,15 @@ async function main() {
   const ai = new NuclearThroneAI(config);
 
   // Handle graceful shutdown
-  process.on('SIGINT', async () => {
+  process.on('SIGINT', () => {
     console.log('\n🛑 Received interrupt signal...');
-    await ai.stop();
-    process.exit(0);
+    void ai.stop().then(() => process.exit(0));
   });
 
   // Handle uncaught errors
-  process.on('uncaughtException', async (error) => {
+  process.on('uncaughtException', (error) => {
     console.error('\n💥 Uncaught exception:', error);
-    await ai.emergencyStop();
-    process.exit(1);
+    void ai.emergencyStop().then(() => process.exit(1));
   });
 
   try {
@@ -392,5 +392,5 @@ export { NuclearThroneAI, AIConfig };
 
 // Run CLI if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  void main();
 }

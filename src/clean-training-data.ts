@@ -13,9 +13,36 @@ interface CleaningConfig {
   maxMouseJump: number;
 }
 
+interface CollectionMetadata {
+  collectionInfo: {
+    startTime: string;
+    endTime: string;
+    duration: number;
+    dataPointsCollected: number;
+    windowTitle: string;
+  };
+  dataPoints: TrainingDataFrame[];
+}
+
+interface TrainingDataFrame {
+  timestamp: number;
+  inputEvents?: InputEvent[];
+  screenshotFile?: string;
+  screenshotPath?: string;
+}
+
+interface InputEvent {
+  type: 'keyboard' | 'mouse' | 'mousemove';
+  action?: 'press' | 'release' | 'move';
+  key?: string;
+  button?: string;
+  x?: number;
+  y?: number;
+}
+
 interface TrainingSession {
   dir: string;
-  metadata: any;
+  metadata: CollectionMetadata['collectionInfo'];
   dataFile: string;
 }
 
@@ -26,7 +53,7 @@ class TrainingDataCleaner {
     this.config = config;
   }
 
-  async clean(): Promise<void> {
+  public async clean(): Promise<void> {
     console.log('🧹 Starting training data cleaning process...');
     console.log(`Input directory: ${this.config.inputDir}`);
     console.log(`Output directory: ${this.config.outputDir}`);
@@ -86,17 +113,17 @@ class TrainingDataCleaner {
           const metadataPath = join(sessionDir, 'collection_metadata.json');
 
           try {
-            const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8'));
+            const metadata = JSON.parse(
+              await fs.readFile(metadataPath, 'utf8'),
+            ) as CollectionMetadata;
 
             sessions.push({
               dir: sessionDir,
               metadata: metadata.collectionInfo,
               dataFile: metadataPath, // The data is in the metadata file
             });
-          } catch (error) {
-            console.log(
-              `  ⚠️  Skipping ${entry.name}: ${error instanceof Error ? error.message : 'unknown error'}`,
-            );
+          } catch {
+            console.log(`  ⚠️  Skipping ${entry.name}: unable to read metadata`);
           }
         }
       }
@@ -116,23 +143,23 @@ class TrainingDataCleaner {
   }
 
   private async processSession(session: TrainingSession): Promise<{
-    rawData: any[];
-    filteredData: any[];
+    rawData: TrainingDataFrame[];
+    filteredData: TrainingDataFrame[];
   }> {
-    const fullData = JSON.parse(await fs.readFile(session.dataFile, 'utf8'));
+    const fullData = JSON.parse(await fs.readFile(session.dataFile, 'utf8')) as CollectionMetadata;
     const gameData = fullData.dataPoints || [];
 
     // Filter frames with sufficient input events
-    const filteredData = gameData.filter((frame: any) => {
+    const filteredData = gameData.filter((frame: TrainingDataFrame) => {
       if (!frame.inputEvents || frame.inputEvents.length < this.config.minInputEvents) {
         return false;
       }
 
       // Check for erratic mouse movements
-      const mouseEvents = frame.inputEvents.filter((e: any) => e.type === 'mousemove');
+      const mouseEvents = frame.inputEvents.filter((e: InputEvent) => e.type === 'mousemove');
       for (let i = 1; i < mouseEvents.length; i++) {
-        const dx = Math.abs(mouseEvents[i].x - mouseEvents[i - 1].x);
-        const dy = Math.abs(mouseEvents[i].y - mouseEvents[i - 1].y);
+        const dx = Math.abs((mouseEvents[i].x ?? 0) - (mouseEvents[i - 1].x ?? 0));
+        const dy = Math.abs((mouseEvents[i].y ?? 0) - (mouseEvents[i - 1].y ?? 0));
         if (dx > this.config.maxMouseJump || dy > this.config.maxMouseJump) {
           return false;
         }
@@ -147,7 +174,7 @@ class TrainingDataCleaner {
     };
   }
 
-  private async copyScreenshots(data: any[]): Promise<void> {
+  private async copyScreenshots(data: TrainingDataFrame[]): Promise<void> {
     const screenshotDir = join(this.config.outputDir, 'screenshots');
 
     for (const frame of data) {
@@ -160,15 +187,15 @@ class TrainingDataCleaner {
           await fs.copyFile(sourcePath, destPath);
           // Update path to relative
           frame.screenshotPath = `screenshots/${filename}`;
-        } catch (error) {
+        } catch {
           console.warn(`Failed to copy screenshot: ${sourcePath}`);
         }
       }
     }
   }
 
-  private async loadAllProcessedData(): Promise<any[]> {
-    const allData: any[] = [];
+  private async loadAllProcessedData(): Promise<TrainingDataFrame[]> {
+    const allData: TrainingDataFrame[] = [];
     const sessions = await this.findTrainingSessions();
 
     for (const session of sessions) {
@@ -186,10 +213,10 @@ class TrainingDataCleaner {
     return allData;
   }
 
-  private splitData(data: any[]): {
-    train: any[];
-    val: any[];
-    test: any[];
+  private splitData(data: TrainingDataFrame[]): {
+    train: TrainingDataFrame[];
+    val: TrainingDataFrame[];
+    test: TrainingDataFrame[];
   } {
     const shuffled = [...data].sort(() => Math.random() - 0.5);
     const trainSize = Math.floor(
@@ -205,9 +232,9 @@ class TrainingDataCleaner {
   }
 
   private async exportForTensorFlow(splits: {
-    train: any[];
-    val: any[];
-    test: any[];
+    train: TrainingDataFrame[];
+    val: TrainingDataFrame[];
+    test: TrainingDataFrame[];
   }): Promise<void> {
     console.log('🔄 Creating TensorFlow.js datasets...');
 
@@ -258,7 +285,7 @@ class TrainingDataCleaner {
     }
   }
 
-  private extractActionsFromEvents(events: any[]): {
+  private extractActionsFromEvents(events: InputEvent[]): {
     movement: { x: number; y: number } | null;
     shooting: boolean;
     mouseAim: { x: number; y: number } | null;
@@ -317,7 +344,7 @@ class TrainingDataCleaner {
 }
 
 // CLI interface
-async function main() {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.length < 2) {
@@ -378,7 +405,7 @@ async function main() {
 
 // Run if called directly
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  void main();
 }
 
 export { TrainingDataCleaner, CleaningConfig };

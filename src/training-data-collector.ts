@@ -1,5 +1,6 @@
-import { ScreenshotCapture, WindowGeometry } from './screenshot-capture.js';
-import { InputEvent } from './input-capture.js';
+import type { WindowGeometry } from './screenshot-capture.js';
+import { ScreenshotCapture } from './screenshot-capture.js';
+import type { InputEvent } from './input-capture.js';
 import { XInputCapture } from './xinput-capture.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
@@ -13,7 +14,7 @@ export interface TrainingDataPoint {
     height: number;
   };
   inputEvents: InputEvent[];
-  gameState?: any; // Optional game state information
+  gameState?: Record<string, unknown>; // Optional game state information
 }
 
 export interface DataCollectionConfig {
@@ -32,6 +33,7 @@ export class TrainingDataCollector {
   private isCollecting = false;
   private dataPoints: TrainingDataPoint[] = [];
   private config: DataCollectionConfig;
+  private collectionInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: DataCollectionConfig) {
     this.screenshotCapture = new ScreenshotCapture();
@@ -39,7 +41,7 @@ export class TrainingDataCollector {
     this.config = config;
   }
 
-  async initialize(): Promise<void> {
+  public async initialize(): Promise<void> {
     // Ensure output directory exists
     await fs.mkdir(this.config.outputDir, { recursive: true });
 
@@ -61,16 +63,18 @@ export class TrainingDataCollector {
 
     this.gameWindowId = gameWindow.id;
     console.log(`Found game window: ${gameWindow.title} (ID: ${gameWindow.id})`);
-    
+
     // Get window geometry
     this.gameWindowGeometry = await this.screenshotCapture.getWindowGeometry(gameWindow.id);
-    console.log(`Window geometry: ${this.gameWindowGeometry.width}x${this.gameWindowGeometry.height} at (${this.gameWindowGeometry.x}, ${this.gameWindowGeometry.y})`);
-    
+    console.log(
+      `Window geometry: ${this.gameWindowGeometry.width}x${this.gameWindowGeometry.height} at (${this.gameWindowGeometry.x}, ${this.gameWindowGeometry.y})`,
+    );
+
     // Set geometry in input capture
     this.inputCapture.setWindowGeometry(this.gameWindowGeometry);
   }
 
-  async startCollection(): Promise<void> {
+  public async startCollection(): Promise<void> {
     if (this.isCollecting) {
       throw new Error('Data collection already in progress');
     }
@@ -88,29 +92,31 @@ export class TrainingDataCollector {
     console.log(`Starting data collection with ${this.config.captureIntervalMs}ms intervals...`);
 
     // Main collection loop
-    const interval = setInterval(async () => {
-      if (!this.isCollecting) {
-        clearInterval(interval);
-        return;
-      }
-
-      try {
-        await this.collectDataPoint();
-
-        // Check if we've reached max data points
-        if (this.dataPoints.length >= this.config.maxDataPoints) {
-          console.log(
-            `Reached maximum data points (${this.config.maxDataPoints}), stopping collection`,
-          );
-          await this.stopCollection();
+    const interval = setInterval(() => {
+      void (async () => {
+        if (!this.isCollecting) {
+          clearInterval(interval);
+          return;
         }
-      } catch (error) {
-        console.error('Error collecting data point:', error);
-      }
+
+        try {
+          await this.collectDataPoint();
+
+          // Check if we've reached max data points
+          if (this.dataPoints.length >= this.config.maxDataPoints) {
+            console.log(
+              `Reached maximum data points (${this.config.maxDataPoints}), stopping collection`,
+            );
+            await this.stopCollection();
+          }
+        } catch (error) {
+          console.error('Error collecting data point:', error);
+        }
+      })();
     }, this.config.captureIntervalMs);
 
     // Store interval reference for cleanup
-    (this as any).collectionInterval = interval;
+    this.collectionInterval = interval;
   }
 
   private async collectDataPoint(): Promise<void> {
@@ -126,7 +132,10 @@ export class TrainingDataCollector {
       const filename = `screenshot_${timestamp}.png`;
       const filePath = join(this.config.outputDir, filename);
 
-      await this.screenshotCapture.captureWindowById(this.gameWindowId!, filePath);
+      if (!this.gameWindowId) {
+        throw new Error('Game window ID not set');
+      }
+      await this.screenshotCapture.captureWindowById(this.gameWindowId, filePath);
 
       // Use actual window dimensions
       screenshot = {
@@ -135,7 +144,10 @@ export class TrainingDataCollector {
         height: this.gameWindowGeometry?.height || 240,
       };
     } else {
-      const buffer = await this.screenshotCapture.captureWindowToBuffer(this.gameWindowId!);
+      if (!this.gameWindowId) {
+        throw new Error('Game window ID not set');
+      }
+      const buffer = await this.screenshotCapture.captureWindowToBuffer(this.gameWindowId);
       screenshot = {
         buffer,
         width: this.gameWindowGeometry?.width || 320,
@@ -156,7 +168,7 @@ export class TrainingDataCollector {
     );
   }
 
-  async stopCollection(): Promise<TrainingDataPoint[]> {
+  public async stopCollection(): Promise<TrainingDataPoint[]> {
     if (!this.isCollecting) {
       return this.dataPoints;
     }
@@ -167,8 +179,9 @@ export class TrainingDataCollector {
     this.inputCapture.stopCapturing();
 
     // Clear interval if it exists
-    if ((this as any).collectionInterval) {
-      clearInterval((this as any).collectionInterval);
+    if (this.collectionInterval) {
+      clearInterval(this.collectionInterval);
+      this.collectionInterval = null;
     }
 
     console.log(`Data collection stopped. Collected ${this.dataPoints.length} data points.`);
@@ -204,12 +217,12 @@ export class TrainingDataCollector {
   }
 
   // Get current data points without stopping collection
-  getCurrentData(): TrainingDataPoint[] {
+  public getCurrentData(): TrainingDataPoint[] {
     return [...this.dataPoints];
   }
 
   // Export data in various formats
-  async exportToFormat(format: 'json' | 'csv'): Promise<string> {
+  public async exportToFormat(format: 'json' | 'csv'): Promise<string> {
     const exportPath = join(this.config.outputDir, `training_data.${format}`);
 
     if (format === 'json') {

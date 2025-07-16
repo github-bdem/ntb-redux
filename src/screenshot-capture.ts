@@ -23,13 +23,18 @@ export interface WindowGeometry {
 
 export class ScreenshotCapture {
   // Get window geometry by ID
-  async getWindowGeometry(windowId: string): Promise<WindowGeometry> {
+  public async getWindowGeometry(windowId: string): Promise<WindowGeometry> {
     try {
-      const { stdout } = await execAsync(`xwininfo -id ${windowId} | grep -E "(Absolute upper-left X:|Absolute upper-left Y:|Width:|Height:)"`);
+      const { stdout } = await execAsync(
+        `xwininfo -id ${windowId} | grep -E "(Absolute upper-left X:|Absolute upper-left Y:|Width:|Height:)"`,
+      );
       const lines = stdout.trim().split('\n');
-      
-      let x = 0, y = 0, width = 0, height = 0;
-      
+
+      let x = 0,
+        y = 0,
+        width = 0,
+        height = 0;
+
       for (const line of lines) {
         if (line.includes('Absolute upper-left X:')) {
           const value = line.split(':')[1];
@@ -45,7 +50,7 @@ export class ScreenshotCapture {
           if (value) height = parseInt(value.trim());
         }
       }
-      
+
       return { x, y, width, height };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -54,7 +59,7 @@ export class ScreenshotCapture {
   }
 
   // Get list of windows
-  async getWindows(): Promise<WindowInfo[]> {
+  public async getWindows(): Promise<WindowInfo[]> {
     try {
       const { stdout } = await execAsync('wmctrl -l -G');
       const windows: WindowInfo[] = [];
@@ -80,13 +85,9 @@ export class ScreenshotCapture {
   }
 
   // Take screenshot of specific window by ID
-  async captureWindowById(windowId: string, outputPath: string): Promise<void> {
+  public async captureWindowById(windowId: string, outputPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const process = spawn('scrot', [
-        '--window',
-        windowId,
-        outputPath,
-      ]);
+      const process = spawn('scrot', ['--window', windowId, outputPath]);
 
       process.on('close', (code) => {
         if (code === 0) {
@@ -103,7 +104,7 @@ export class ScreenshotCapture {
   }
 
   // Find window by title and capture
-  async captureWindowByTitle(titlePattern: string, outputPath: string): Promise<void> {
+  public async captureWindowByTitle(titlePattern: string, outputPath: string): Promise<void> {
     const windows = await this.getWindows();
     const targetWindow = windows.find((w) =>
       w.title.toLowerCase().includes(titlePattern.toLowerCase()),
@@ -117,20 +118,20 @@ export class ScreenshotCapture {
   }
 
   // Capture to buffer instead of file
-  async captureWindowToBuffer(windowId: string): Promise<Buffer> {
+  public async captureWindowToBuffer(windowId: string): Promise<Buffer> {
     // Create temporary file path
     const tempFile = join(tmpdir(), `screenshot-${Date.now()}.png`);
-    
+
     try {
       // Capture to temporary file
       await this.captureWindowById(windowId, tempFile);
-      
+
       // Read file into buffer
       const buffer = await fs.readFile(tempFile);
-      
+
       // Clean up temporary file
       await fs.unlink(tempFile).catch(() => {}); // Ignore errors on cleanup
-      
+
       return buffer;
     } catch (error) {
       // Ensure cleanup even on error

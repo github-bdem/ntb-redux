@@ -32,7 +32,7 @@ class RealTimeInference {
     totalInferences: 0,
     totalTime: 0,
     averageFPS: 0,
-    lastFPSUpdate: Date.now()
+    lastFPSUpdate: Date.now(),
   };
 
   constructor(config: InferenceConfig) {
@@ -40,41 +40,43 @@ class RealTimeInference {
     this.screenshotCapture = new ScreenshotCapture();
   }
 
-  async initialize(): Promise<void> {
+  public async initialize(): Promise<void> {
     console.log('🤖 Initializing real-time inference engine...');
-    
+
     // Load the trained model
     await this.loadModel();
-    
+
     // Find game window
     await this.findGameWindow();
-    
+
     // Warm up the model with a dummy prediction
-    await this.warmUpModel();
-    
+    this.warmUpModel();
+
     console.log('✅ Inference engine ready!');
     console.log(`🎯 Target FPS: ${1000 / this.config.inferenceIntervalMs}`);
   }
 
   private async loadModel(): Promise<void> {
     console.log(`📂 Loading model from: ${this.config.modelPath}`);
-    
+
     try {
       this.model = await tf.loadLayersModel(`file://${this.config.modelPath}/model.json`);
       console.log('✅ Model loaded successfully');
-      console.log(`📊 Model input shape: ${this.model.inputs[0]?.shape}`);
-      console.log(`📊 Model output shape: ${this.model.outputs[0]?.shape}`);
+      console.log(`📊 Model input shape: ${JSON.stringify(this.model.inputs[0]?.shape)}`);
+      console.log(`📊 Model output shape: ${JSON.stringify(this.model.outputs[0]?.shape)}`);
     } catch (error) {
-      throw new Error(`Failed to load model: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Failed to load model: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
   private async findGameWindow(): Promise<void> {
     console.log(`🔍 Looking for game window: ${this.config.gameWindowTitle}`);
-    
+
     const windows = await this.screenshotCapture.getWindows();
-    const gameWindow = windows.find(w => 
-      w.title.toLowerCase().includes(this.config.gameWindowTitle.toLowerCase())
+    const gameWindow = windows.find((w) =>
+      w.title.toLowerCase().includes(this.config.gameWindowTitle.toLowerCase()),
     );
 
     if (!gameWindow) {
@@ -85,25 +87,25 @@ class RealTimeInference {
     console.log(`✅ Found game window: ${gameWindow.title} (ID: ${gameWindow.id})`);
   }
 
-  private async warmUpModel(): Promise<void> {
+  private warmUpModel(): void {
     if (!this.model) throw new Error('Model not loaded');
-    
+
     console.log('🔥 Warming up model...');
-    
+
     // Create dummy input matching expected shape
     const dummyInput = tf.zeros([1, 240, 320, 3]);
-    
+
     // Run a few warm-up predictions
     for (let i = 0; i < 3; i++) {
       const prediction = this.model.predict(dummyInput) as tf.Tensor;
       prediction.dispose();
     }
-    
+
     dummyInput.dispose();
     console.log('✅ Model warmed up');
   }
 
-  async startInference(): Promise<void> {
+  public async startInference(): Promise<void> {
     if (this.isRunning) {
       console.log('⚠️  Inference already running');
       return;
@@ -115,119 +117,121 @@ class RealTimeInference {
 
     console.log('🚀 Starting real-time inference...');
     console.log('🛑 Press Ctrl+C to stop');
-    
+
     this.isRunning = true;
     this.performanceStats.lastFPSUpdate = Date.now();
 
     // Main inference loop
     while (this.isRunning) {
       const startTime = Date.now();
-      
+
       try {
         // Capture screenshot
         const screenshot = await this.captureGameScreen();
-        
+
         // Run inference
         const action = await this.predict(screenshot);
-        
+
         // Apply smoothing
         const smoothedAction = this.smoothAction(action);
-        
+
         // Execute action (we'll implement this next)
-        await this.executeAction(smoothedAction);
-        
+        this.executeAction(smoothedAction);
+
         // Update performance stats
         this.updatePerformanceStats(startTime);
-        
+
         // Debug output
         if (this.config.debugMode) {
           this.logDebugInfo(smoothedAction, Date.now() - startTime);
         }
-        
+
         // Wait for next frame
         const elapsed = Date.now() - startTime;
         const waitTime = Math.max(0, this.config.inferenceIntervalMs - elapsed);
-        
+
         if (waitTime > 0) {
-          await new Promise(resolve => setTimeout(resolve, waitTime));
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
         }
-        
       } catch (error) {
-        console.error('❌ Inference error:', error instanceof Error ? error.message : String(error));
-        
+        console.error(
+          '❌ Inference error:',
+          error instanceof Error ? error.message : String(error),
+        );
+
         // Brief pause before retrying
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
-    
+
     console.log('🛑 Inference stopped');
   }
 
-  stopInference(): void {
+  public stopInference(): void {
     this.isRunning = false;
   }
 
   private async captureGameScreen(): Promise<tf.Tensor3D> {
     if (!this.gameWindowId) throw new Error('Game window not found');
-    
+
     // Capture screenshot as buffer
     const imageBuffer = await this.screenshotCapture.captureWindowToBuffer(this.gameWindowId);
-    
+
     // Convert to tensor
     let imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
-    
+
     // Resize to model input size
     const resized = tf.image.resizeBilinear(imageTensor, [240, 320]);
     imageTensor.dispose();
-    
+
     // Normalize to [0, 1]
     const normalized = tf.div(resized, 255.0);
     resized.dispose();
-    
+
     return normalized as tf.Tensor3D;
   }
 
   private async predict(imageTensor: tf.Tensor3D): Promise<GameAction> {
     if (!this.model) throw new Error('Model not loaded');
-    
+
     // Add batch dimension
     const batchedInput = tf.expandDims(imageTensor, 0);
-    
+
     // Run prediction
     const prediction = this.model.predict(batchedInput) as tf.Tensor;
     const predictionData = await prediction.data();
-    
+
     // Clean up tensors
     batchedInput.dispose();
     prediction.dispose();
     imageTensor.dispose();
-    
+
     // Extract action components
     const action: GameAction = {
       movement: {
-        x: predictionData[0] ?? 0,  // -1 to 1
-        y: predictionData[1] ?? 0   // -1 to 1
+        x: predictionData[0] ?? 0, // -1 to 1
+        y: predictionData[1] ?? 0, // -1 to 1
       },
       aim: {
-        x: (predictionData[2] ?? 0) * 320,  // Denormalize to screen coordinates
-        y: (predictionData[3] ?? 0) * 240   // Denormalize to screen coordinates
+        x: (predictionData[2] ?? 0) * 320, // Denormalize to screen coordinates
+        y: (predictionData[3] ?? 0) * 240, // Denormalize to screen coordinates
       },
-      shooting: (predictionData[4] ?? 0) > 0.5,  // Threshold for shooting
-      confidence: this.calculateConfidence(predictionData as Float32Array)
+      shooting: (predictionData[4] ?? 0) > 0.5, // Threshold for shooting
+      confidence: this.calculateConfidence(predictionData as Float32Array),
     };
-    
+
     return action;
   }
 
   private calculateConfidence(predictionData: Float32Array): number {
     // Simple confidence calculation based on prediction magnitudes
     const movementMagnitude = Math.sqrt(
-      (predictionData[0] ?? 0) * (predictionData[0] ?? 0) + 
-      (predictionData[1] ?? 0) * (predictionData[1] ?? 0)
+      (predictionData[0] ?? 0) * (predictionData[0] ?? 0) +
+        (predictionData[1] ?? 0) * (predictionData[1] ?? 0),
     );
-    
+
     const shootingConfidence = Math.abs((predictionData[4] ?? 0) - 0.5) * 2; // 0-1 scale
-    
+
     return Math.min(1.0, (movementMagnitude + shootingConfidence) / 2);
   }
 
@@ -236,43 +240,45 @@ class RealTimeInference {
       this.lastAction = action;
       return action;
     }
-    
+
     const alpha = this.config.smoothingFactor;
-    
+
     const smoothedAction: GameAction = {
       movement: {
         x: alpha * action.movement.x + (1 - alpha) * this.lastAction.movement.x,
-        y: alpha * action.movement.y + (1 - alpha) * this.lastAction.movement.y
+        y: alpha * action.movement.y + (1 - alpha) * this.lastAction.movement.y,
       },
       aim: {
         x: alpha * action.aim.x + (1 - alpha) * this.lastAction.aim.x,
-        y: alpha * action.aim.y + (1 - alpha) * this.lastAction.aim.y
+        y: alpha * action.aim.y + (1 - alpha) * this.lastAction.aim.y,
       },
       shooting: action.shooting, // No smoothing for discrete actions
-      confidence: action.confidence
+      confidence: action.confidence,
     };
-    
+
     this.lastAction = smoothedAction;
-    
+
     // Store in history for analysis
     this.actionHistory.push(smoothedAction);
     if (this.actionHistory.length > 100) {
       this.actionHistory.shift(); // Keep only recent actions
     }
-    
+
     return smoothedAction;
   }
 
-  private async executeAction(action: GameAction): Promise<void> {
+  private executeAction(action: GameAction): void {
     // Only execute if confidence is above threshold
     if (action.confidence < this.config.confidenceThreshold) {
       return;
     }
-    
+
     // We'll implement actual input execution in the next component
     // For now, just log the action
     if (this.config.debugMode) {
-      console.log(`🎮 Action: move(${action.movement.x.toFixed(2)}, ${action.movement.y.toFixed(2)}) aim(${action.aim.x.toFixed(0)}, ${action.aim.y.toFixed(0)}) shoot=${action.shooting}`);
+      console.log(
+        `🎮 Action: move(${action.movement.x.toFixed(2)}, ${action.movement.y.toFixed(2)}) aim(${action.aim.x.toFixed(0)}, ${action.aim.y.toFixed(0)}) shoot=${action.shooting}`,
+      );
     }
   }
 
@@ -280,50 +286,54 @@ class RealTimeInference {
     const elapsed = Date.now() - startTime;
     this.performanceStats.totalInferences++;
     this.performanceStats.totalTime += elapsed;
-    
+
     // Update FPS every second
     const now = Date.now();
     if (now - this.performanceStats.lastFPSUpdate > 1000) {
       const fps = 1000 / (this.performanceStats.totalTime / this.performanceStats.totalInferences);
       this.performanceStats.averageFPS = fps;
       this.performanceStats.lastFPSUpdate = now;
-      
+
       if (this.config.debugMode) {
-        console.log(`📊 Performance: ${fps.toFixed(1)} FPS, avg inference: ${(this.performanceStats.totalTime / this.performanceStats.totalInferences).toFixed(1)}ms`);
+        console.log(
+          `📊 Performance: ${fps.toFixed(1)} FPS, avg inference: ${(this.performanceStats.totalTime / this.performanceStats.totalInferences).toFixed(1)}ms`,
+        );
       }
     }
   }
 
   private logDebugInfo(action: GameAction, inferenceTime: number): void {
-    console.log(`⏱️  ${inferenceTime}ms | 🎯 conf:${action.confidence.toFixed(2)} | 🏃 move:(${action.movement.x.toFixed(2)},${action.movement.y.toFixed(2)}) | 🎯 aim:(${action.aim.x.toFixed(0)},${action.aim.y.toFixed(0)}) | 💥 shoot:${action.shooting}`);
+    console.log(
+      `⏱️  ${inferenceTime}ms | 🎯 conf:${action.confidence.toFixed(2)} | 🏃 move:(${action.movement.x.toFixed(2)},${action.movement.y.toFixed(2)}) | 🎯 aim:(${action.aim.x.toFixed(0)},${action.aim.y.toFixed(0)}) | 💥 shoot:${action.shooting}`,
+    );
   }
 
-  getPerformanceStats(): typeof this.performanceStats {
+  public getPerformanceStats(): typeof this.performanceStats {
     return { ...this.performanceStats };
   }
 
-  getActionHistory(): GameAction[] {
+  public getActionHistory(): GameAction[] {
     return [...this.actionHistory];
   }
 
   // Method to save recent gameplay for analysis
-  async saveGameplaySession(outputPath: string): Promise<void> {
+  public async saveGameplaySession(outputPath: string): Promise<void> {
     const session = {
       timestamp: new Date().toISOString(),
       config: this.config,
       performanceStats: this.performanceStats,
-      actionHistory: this.actionHistory
+      actionHistory: this.actionHistory,
     };
-    
+
     await fs.writeFile(outputPath, JSON.stringify(session, null, 2));
     console.log(`💾 Gameplay session saved to: ${outputPath}`);
   }
 }
 
 // CLI interface
-async function main() {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  
+
   if (args.length < 1) {
     console.log('Usage: ts-node realtime-inference.ts <model-path> [options]');
     console.log('');
@@ -345,7 +355,7 @@ async function main() {
     inferenceIntervalMs: 100, // 10 FPS
     smoothingFactor: 0.3,
     confidenceThreshold: 0.3,
-    debugMode: false
+    debugMode: false,
   };
 
   // Parse options
@@ -373,17 +383,17 @@ async function main() {
   console.log('Configuration:', config);
 
   const inference = new RealTimeInference(config);
-  
+
   // Handle graceful shutdown
-  process.on('SIGINT', async () => {
+  process.on('SIGINT', () => {
     console.log('\n🛑 Shutting down...');
     inference.stopInference();
-    
+
     // Save session data
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    await inference.saveGameplaySession(`gameplay_session_${timestamp}.json`);
-    
-    process.exit(0);
+    void inference.saveGameplaySession(`gameplay_session_${timestamp}.json`).then(() => {
+      process.exit(0);
+    });
   });
 
   try {
@@ -400,5 +410,5 @@ export { RealTimeInference, InferenceConfig, GameAction };
 
 // Run CLI if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  void main();
 }

@@ -1,6 +1,10 @@
 # ntb-redux
 
-LM powered bot to play the video game nuclear throne. Currently in a very alpha state. Built using Claude-Code as a fun side project to see how 'good' vibe coding is with minimal developer input. It technically does work from end to end but there are tons of things that can be done to improve it and some of the design decisions (mainly the data cleaning layer) are questionable to say the least. This works as a decent proof of concept and a way to get all the steps for the project laid out. Next up I look forward to going through and improving/cleaning everything up by hand.
+LM powered bot to play the video game nuclear throne. Currently in a very alpha state. There are tons of things that can be done to improve it and some of the design decisions (mainly the data cleaning layer) are questionable to say the least. This works as a decent proof of concept and a way to get all the steps for the project laid out. Next up I look forward to going through and improving/cleaning everything up by hand.
+
+## History
+
+This is a second attempt at a project I started around 7 years ago.  I had the basic idea for this project and even got around to creating the data collection portion [os-input-capture](https://github.com/github-bdem/os-input-capture) before life derailed my progess.  Fast forward to now, and with all the advances in the LM landscape and tooling, I figured it would be a good time to try out the project again.  This time I decided to also try out my new Anthropic subscription and see just how useful claude-code is when writing a project from the ground up.
 
 ## OS Dependencies
 
